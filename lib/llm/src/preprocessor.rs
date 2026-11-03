@@ -15,6 +15,7 @@ pub mod media;
 #[cfg(feature = "mm-routing")]
 pub mod mm_routing;
 pub mod prompt;
+mod solar;
 pub mod speculative_prefill;
 pub(crate) mod structural_tag;
 pub(crate) mod tool_choice;
@@ -2187,6 +2188,9 @@ impl OpenAIPreprocessor {
         let thinking_enabled = dynamo_renderer::thinking_bool_from_args(chat_template_args);
 
         match reasoning_parser {
+            Some("solar_open2") => {
+                !Self::is_reasoning_disabled_by_request(reasoning_parser, chat_template_args)
+            }
             // These SGLang reasoners are enabled unless the request opts out.
             Some("qwen3" | "glm45" | "nemotron_nano" | "nemotron3" | "nemotron_v3") => {
                 thinking_enabled != Some(false)
@@ -5406,7 +5410,9 @@ impl OpenAIPreprocessor {
             } else {
                 stream
             };
-        let stream: Pin<Box<dyn Stream<Item = _> + Send>> = if should_parse_reasoning {
+        let stream: Pin<Box<dyn Stream<Item = _> + Send>> = if should_parse_reasoning
+            || (reasoning_parser == Some("solar_open2") && reasoning_disabled_by_request)
+        {
             Box::pin(annotate_reasoning_usage(stream))
         } else {
             stream
@@ -5424,6 +5430,16 @@ impl OpenAIPreprocessor {
                 ToolProcessingRoute::ParserV2(parser_name) => Box::pin(
                     tool_parser_v2::apply_stream(stream, tool_definitions, parser_name),
                 ),
+                ToolProcessingRoute::LegacyJail(effective_tool_call_parser)
+                    if effective_tool_call_parser.as_deref() == Some("solar_open2") =>
+                {
+                    Box::pin(solar::apply_tool_policy(
+                        stream,
+                        request.inner.tool_choice.clone(),
+                        tool_definitions,
+                        uses_tool_call_structural_tag,
+                    ))
+                }
                 ToolProcessingRoute::LegacyJail(effective_tool_call_parser) => {
                     // A forced tool_choice installed a JSON grammar, so the jail may release
                     // calls as they arrive instead of buffering to the closing brace. The
@@ -6418,7 +6434,8 @@ impl OpenAIPreprocessor {
         //   the reasoning name.
         Ok(matches!(
             tool_call_parser,
-            Some("gemma4")
+            Some("solar_open2")
+                | Some("gemma4")
                 | Some("gemma-4")
                 | Some("harmony")
                 | Some("kimi_k2")
@@ -6434,7 +6451,8 @@ impl OpenAIPreprocessor {
                 | Some("deepseek_v41")
         ) || matches!(
             reasoning_parser,
-            Some("gemma4")
+            Some("solar_open2")
+                | Some("gemma4")
                 | Some("gemma-4")
                 | Some("gpt_oss")
                 | Some("kimi_k25")
@@ -6551,7 +6569,8 @@ impl OpenAIPreprocessor {
         matches!(
             reasoning_parser,
             Some(
-                "deepseek_r1"
+                "solar_open2"
+                    | "deepseek_r1"
                     | "deepseek_v3"
                     | "deepseek_v3_1"
                     | "deepseek_v3_2"
@@ -6574,7 +6593,8 @@ impl OpenAIPreprocessor {
         matches!(
             reasoning_parser,
             Some(
-                "deepseek_r1"
+                "solar_open2"
+                    | "deepseek_r1"
                     | "deepseek_v3"
                     | "deepseek_v3_1"
                     | "deepseek_v3_2"
@@ -6635,6 +6655,7 @@ impl OpenAIPreprocessor {
         };
 
         match reasoning_parser {
+            Some("solar_open2") => prompt.ends_with("<|think:start|>"),
             Some("minimax_m3") | Some("minimax-m3") => prompt.ends_with("<mm:think>"),
             Some("kimi_k3") | Some("kimi-k3") => {
                 let mut suffix = prompt.chars().rev().filter(|c| !c.is_whitespace());
@@ -6782,6 +6803,13 @@ impl OpenAIPreprocessor {
         chat_template_args: Option<&std::collections::HashMap<String, serde_json::Value>>,
     ) -> bool {
         match reasoning_parser {
+            Some("solar_open2") => {
+                // Solar's template defaults to high and ignores enable_thinking.
+                // Only medium/high leave the think block open in the supplied template.
+                chat_template_args
+                    .and_then(|args| args.get("reasoning_effort"))
+                    .is_some_and(|effort| !matches!(effort.as_str(), Some("medium" | "high")))
+            }
             Some("kimi_k25" | "kimi_k3" | "kimi-k3") => {
                 dynamo_renderer::thinking_bool_from_args(chat_template_args) == Some(false)
             }
@@ -7735,6 +7763,21 @@ impl
         let response_stream = next.generate(common_request).await?;
         // Extract context once
         let context = response_stream.context();
+
+        // Solar tools require a real successful backend finish. Cancellation
+        // must be caught before the generic delta generator maps it to `stop`.
+        let solar_tools = matches!(
+            &tool_processing_route,
+            ToolProcessingRoute::LegacyJail(Some(parser)) if parser == "solar_open2"
+        );
+        let cancellation_trace = trace_finish_reason_metadata.clone();
+        let response_stream = response_stream.map(move |response| {
+            if solar_tools {
+                solar::reject_cancelled(response, cancellation_trace.as_ref())
+            } else {
+                response
+            }
+        });
 
         // transform the postprocessor stream (no boxing yet) - detokenize
         let stream = Self::transform_postprocessor_stream_with_image_tokens(

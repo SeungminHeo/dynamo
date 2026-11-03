@@ -231,3 +231,7 @@ lto = "thin"
 inherits = "release"
 debug = true
 strip = false
+
+[patch.crates-io]
+dynamo-parsers = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "4df59203ec5f011c8bedf01219edfd906ff813d6" }
+dynamo-protocols = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "4df59203ec5f011c8bedf01219edfd906ff813d6" }
