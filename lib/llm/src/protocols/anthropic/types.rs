@@ -773,6 +773,8 @@ pub(super) fn anthropic_stop_fields(
             (AnthropicStopReason::ToolUse, None)
         }
         FinishReason::ContentFilter => (AnthropicStopReason::Refusal, None),
+        // Messages has no repetition stop reason; the engine ended the turn.
+        FinishReason::Repetition => (AnthropicStopReason::EndTurn, None),
     }
 }
 

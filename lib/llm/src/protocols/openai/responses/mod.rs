@@ -1116,6 +1116,7 @@ pub(crate) fn responses_incomplete_reason(
     match finish_reason {
         Some(FinishReason::Length) => Some("max_output_tokens"),
         Some(FinishReason::ContentFilter) => Some("content_filter"),
+        Some(FinishReason::Repetition) => Some("repetition"),
         _ => None,
     }
 }
