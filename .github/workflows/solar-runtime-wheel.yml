@@ -17,7 +17,6 @@ jobs:
     timeout-minutes: 90
     container: quay.io/pypa/manylinux_2_28_x86_64
     env:
-      PATH: /opt/python/cp312-cp312/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       CARGO_BUILD_JOBS: '3'
       CUDARC_CUDA_VERSION: '13000'
       CARGO_PROFILE_RELEASE_DEBUG: '0'
@@ -36,19 +35,25 @@ jobs:
           curl --fail --location --retry 3 https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip -o /tmp/protoc.zip
           unzip -q /tmp/protoc.zip -d /opt/protoc
           echo /opt/protoc/bin >> "$GITHUB_PATH"
-          python -m pip install 'maturin[patchelf]==1.16.0'
+          /opt/python/cp312-cp312/bin/python -m venv /opt/solar-build
+          /opt/solar-build/bin/python -m pip install 'maturin[patchelf]==1.16.0'
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo /opt/solar-build/bin >> "$GITHUB_PATH"
+          /opt/solar-build/bin/maturin --version
+          "$HOME/.cargo/bin/cargo" --version
       - name: Build pinned runtime wheel for Python 3.12
         working-directory: lib/bindings/python
         shell: bash
         run: |
           set -euo pipefail
+          export PATH="/opt/solar-build/bin:$HOME/.cargo/bin:/opt/protoc/bin:$PATH"
           maturin build --locked --release --interpreter /opt/python/cp312-cp312/bin/python --compatibility manylinux_2_28 --features kv-indexer,slot-tracker,select-service,mm-routing,ais-forward-pass,request-trace-s3 --out ../../../dist
       - name: Verify wheel parser registration without GPUs
         shell: bash
         run: |
           set -euo pipefail
-          python -m pip install --no-deps dist/ai_dynamo_runtime-*.whl
-          python - <<'PY'
+          /opt/solar-build/bin/python -m pip install --no-deps dist/ai_dynamo_runtime-*.whl
+          /opt/solar-build/bin/python - <<'PY'
           from dynamo._core import get_reasoning_parser_names, get_tool_parser_names
           assert 'solar_open2' in get_reasoning_parser_names()
           assert 'solar_open2' in get_tool_parser_names()
