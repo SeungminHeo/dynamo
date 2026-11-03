@@ -88,3 +88,39 @@ GPU acceptance remains a separate step: use an isolated deployment, then compare
 prompt tokens and valid JSON on the existing workload, reasoning/tool separation,
 required/named tool calls, and interrupted outputs. Body byte equality is not a
 reliable model parity metric under different batching.
+
+## Wheel releases and engine images
+
+Keep the parser/protocol source in the frontend-crates fork, the runtime wheel
+in this Dynamo fork, and engine changes in their SGLang/vLLM forks. For the same
+supported Linux/Python/CUDA environment, both engine images consume the same
+verified runtime wheel. Keep their engine packages pinned independently. The
+current build targets Linux x86_64, Python 3.12 compatibility and CUDA 13.
+The wheel build does not validate engine GPU execution or native NIXL compatibility.
+
+Actions artifacts are temporary build outputs. After a successful wheel run,
+prepare a release with Python 3.11+ and an authenticated GitHub CLI:
+
+```sh
+python3 container/solar_runtime_release.py RUN_ID --output /tmp/solar-release-RUN_ID
+# To prepare and publish in one invocation, use a fresh output directory:
+python3 container/solar_runtime_release.py RUN_ID --output /tmp/solar-publish-RUN_ID --publish
+```
+
+The helper checks the workflow identity, successful status, wheel checksum,
+package version and compatibility tags. It creates a personal-fork prerelease
+named `solar-runtime-1.6.1-<source-commit>` with the wheel, `SHA256SUMS`, and
+`build-info.json`. The manifest records source pins, build command, run URL and
+an exact wheel download URL. Existing releases/assets are never overwritten.
+No PyPI publication is involved.
+
+The package version remains 1.6.1 for this downstream build. Do not identify it
+by `pip freeze` alone. Pin `wheel_url` and `wheel_sha256` from `build-info.json`
+in the image build inputs, check the checksum, then install the local wheel
+with `--no-deps --force-reinstall` after all stock Dynamo package installation.
+A later install of the stock runtime would replace the custom parser.
+
+Keep the deployment's engine commit, final image digest, Dynamo source commit,
+wheel SHA256 and chat-template SHA256 together in its deployment lock/manifest.
+The frontend and worker images should use the same selected Dynamo runtime build.
+Rollback by selecting the previous image digest; keep old wheel releases intact.
