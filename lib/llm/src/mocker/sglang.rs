@@ -100,6 +100,7 @@ pub(super) fn adapt(
 
 fn native_finish_reason(reason: &FinishReason) -> Value {
     match reason {
+        FinishReason::Repetition => json!({"type": "repetition"}),
         FinishReason::Length => json!({"type": "length"}),
         FinishReason::EoS | FinishReason::Stop => json!({"type": "stop"}),
         FinishReason::Cancelled => json!({

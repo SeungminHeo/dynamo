@@ -112,6 +112,10 @@ pub enum FinishReason {
 
     #[serde(rename = "content_filter")]
     ContentFilter,
+
+    /// The engine stopped after detecting repetition.
+    #[serde(rename = "repetition")]
+    Repetition,
 }
 
 impl std::fmt::Display for FinishReason {
@@ -123,6 +127,7 @@ impl std::fmt::Display for FinishReason {
             FinishReason::Error(msg) => write!(f, "error: {}", msg),
             FinishReason::Cancelled => write!(f, "cancelled"),
             FinishReason::ContentFilter => write!(f, "content_filter"),
+            FinishReason::Repetition => write!(f, "repetition"),
         }
     }
 }
@@ -137,6 +142,7 @@ impl std::str::FromStr for FinishReason {
             "stop" => Ok(FinishReason::Stop),
             "cancelled" | "abort" => Ok(FinishReason::Cancelled),
             "content_filter" => Ok(FinishReason::ContentFilter),
+            "repetition" => Ok(FinishReason::Repetition),
             "error" => Ok(FinishReason::Error(
                 "backend emitted finish_reason=error without a message".into(),
             )),
@@ -168,7 +174,7 @@ impl<'de> serde::de::Visitor<'de> for FinishReasonVisitor {
 
     fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(
-            r#"a finish reason: "eos", "length", "stop", "cancelled", "abort", "content_filter", "error", "error: <message>", or {"error": "<message>"}"#,
+            r#"a finish reason: "eos", "length", "stop", "cancelled", "abort", "content_filter", "repetition", "error", "error: <message>", or {"error": "<message>"}"#,
         )
     }
 
@@ -214,6 +220,7 @@ impl From<FinishReason> for dynamo_protocols::types::CompletionFinishReason {
                 dynamo_protocols::types::CompletionFinishReason::ContentFilter
             }
             FinishReason::Length => dynamo_protocols::types::CompletionFinishReason::Length,
+            FinishReason::Repetition => dynamo_protocols::types::CompletionFinishReason::Repetition,
             FinishReason::Error(_) => dynamo_protocols::types::CompletionFinishReason::Stop,
         }
     }
@@ -224,6 +231,7 @@ impl From<dynamo_protocols::types::CompletionFinishReason> for FinishReason {
         match reason {
             dynamo_protocols::types::CompletionFinishReason::Stop => FinishReason::Stop,
             dynamo_protocols::types::CompletionFinishReason::Length => FinishReason::Length,
+            dynamo_protocols::types::CompletionFinishReason::Repetition => FinishReason::Repetition,
             dynamo_protocols::types::CompletionFinishReason::ContentFilter => {
                 FinishReason::ContentFilter
             }
@@ -869,6 +877,7 @@ mod tests {
             FinishReason::Stop,
             FinishReason::Cancelled,
             FinishReason::ContentFilter,
+            FinishReason::Repetition,
             FinishReason::Error("boom".to_string()),
             FinishReason::Error(String::new()),
         ]
@@ -884,6 +893,7 @@ mod tests {
             (FinishReason::Stop, r#""stop""#),
             (FinishReason::Cancelled, r#""cancelled""#),
             (FinishReason::ContentFilter, r#""content_filter""#),
+            (FinishReason::Repetition, r#""repetition""#),
             (
                 FinishReason::Error("boom".to_string()),
                 r#"{"error":"boom"}"#,
@@ -903,6 +913,7 @@ mod tests {
             (r#""cancelled""#, FinishReason::Cancelled),
             (r#""abort""#, FinishReason::Cancelled),
             (r#""content_filter""#, FinishReason::ContentFilter),
+            (r#""repetition""#, FinishReason::Repetition),
             // Rust producers (the `Serialize` form).
             (r#"{"error":"boom"}"#, FinishReason::Error("boom".into())),
             // Python engine adapters (the `Display` form).

@@ -123,6 +123,9 @@ impl DeltaAggregator {
                             Some(
                                 dynamo_protocols::types::CompletionFinishReason::ContentFilter,
                             ) => Some(FinishReason::ContentFilter),
+                            Some(dynamo_protocols::types::CompletionFinishReason::Repetition) => {
+                                Some(FinishReason::Repetition)
+                            }
                             None => None,
                         };
 
@@ -297,6 +300,20 @@ mod tests {
         assert!(response.inner.usage.is_none());
         assert!(response.inner.system_fingerprint.is_none());
         assert_eq!(response.inner.choices.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_repetition_survives_collection() {
+        let deltas = vec![
+            create_test_delta(0, "hello", None, None),
+            create_test_delta(0, "", Some("repetition".into()), None),
+        ];
+        let response = DeltaAggregator::apply(stream::iter(deltas), ParsingOptions::default())
+            .await
+            .unwrap();
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["choices"][0]["finish_reason"], "repetition");
+        assert_eq!(value["choices"][0]["text"], "hello");
     }
 
     #[tokio::test]
