@@ -95,7 +95,8 @@ Keep the parser/protocol source in the frontend-crates fork, the runtime wheel
 in this Dynamo fork, and engine changes in their SGLang/vLLM forks. For the same
 supported Linux/Python/CUDA environment, both engine images consume the same
 verified runtime wheel. Keep their engine packages pinned independently. The
-current build targets Linux x86_64, Python 3.12 compatibility and CUDA 13.
+current build targets Linux x86_64 (the repository's x86-64-v3/AVX2 target),
+Python 3.12 compatibility and CUDA 13.
 The wheel build does not validate engine GPU execution or native NIXL compatibility.
 
 Actions artifacts are temporary build outputs. After a successful wheel run,
@@ -109,8 +110,8 @@ python3 container/solar_runtime_release.py RUN_ID --output /tmp/solar-publish-RU
 
 The helper checks the workflow identity, successful status, wheel checksum,
 package version and compatibility tags. It creates a personal-fork prerelease
-named `solar-runtime-1.6.1-<source-commit>` with the wheel, `SHA256SUMS`, and
-`build-info.json`. The manifest records source pins, build command, run URL and
+named `solar-runtime-1.6.1-<source-commit>` with the wheel, `SHA256SUMS`,
+`build-info.json`, and `solar-runtime.requirements.txt`. The manifest records source pins, build command, run URL and
 an exact wheel download URL. Existing releases/assets are never overwritten.
 No PyPI publication is involved.
 
@@ -124,3 +125,16 @@ Keep the deployment's engine commit, final image digest, Dynamo source commit,
 wheel SHA256 and chat-template SHA256 together in its deployment lock/manifest.
 The frontend and worker images should use the same selected Dynamo runtime build.
 Rollback by selecting the previous image digest; keep old wheel releases intact.
+
+The release's requirements file pins the wheel URL and hash. Copy the selected
+file into either engine image's build context and install it after the stock
+Dynamo installation:
+
+```dockerfile
+COPY solar-runtime.requirements.txt /tmp/solar-runtime.requirements.txt
+RUN python3 -m pip install --require-hashes --no-deps --force-reinstall \
+    -r /tmp/solar-runtime.requirements.txt
+```
+
+Commit that requirements file alongside the engine image/deployment inputs.
+Changing it selects a new runtime build without changing the SGLang/vLLM package.

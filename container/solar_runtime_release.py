@@ -75,6 +75,7 @@ def prepare(run_id: int, output: Path) -> tuple[str, str, list[Path]]:
     ):
         raise ValueError(f"Unexpected wheel compatibility tags: {tags}")
     manifest = tomllib.loads(source_file("Cargo.toml", commit))
+    cargo_config = tomllib.loads(source_file(".cargo/config.toml", commit))
     workflow = source_file(WORKFLOW, commit)
     commands = [
         line.strip()
@@ -94,6 +95,8 @@ def prepare(run_id: int, output: Path) -> tuple[str, str, list[Path]]:
         "workflow_run": run["html_url"],
         "workflow_source": f"https://github.com/{REPO}/blob/{commit}/{WORKFLOW}",
         "build_command": commands[0],
+        "rustflags": cargo_config["target"]["x86_64-unknown-linux-gnu"]["rustflags"],
+        "cargo_environment": cargo_config["env"],
         "wheel": wheel.name,
         "wheel_version": metadata["Version"],
         "wheel_tags": tags,
@@ -103,10 +106,15 @@ def prepare(run_id: int, output: Path) -> tuple[str, str, list[Path]]:
     }
     info_path = output / "build-info.json"
     info_path.write_text(json.dumps(info, indent=2) + "\n")
+    requirements = output / "solar-runtime.requirements.txt"
+    requirements.write_text(
+        f"ai-dynamo-runtime @ {download} --hash=sha256:{checksum}\n"
+    )
     # Release checksums use basenames, so sha256sum -c works in a download directory.
     sums = output / "SHA256SUMS"
     sums.write_text(
         f"{checksum}  {wheel.name}\n{sha256(info_path)}  {info_path.name}\n"
+        f"{sha256(requirements)}  {requirements.name}\n"
     )
     notes = output / "release-notes.md"
     notes.write_text(
@@ -118,7 +126,7 @@ def prepare(run_id: int, output: Path) -> tuple[str, str, list[Path]]:
         f"Build and CPU import/registration check: {run['html_url']}. GPU validation is not included.\n"
     )
     print(json.dumps(info, indent=2))
-    return tag, commit, [wheel, sums, info_path]
+    return tag, commit, [wheel, sums, info_path, requirements]
 
 
 def main() -> None:
