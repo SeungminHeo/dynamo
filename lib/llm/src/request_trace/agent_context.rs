@@ -326,6 +326,9 @@ fn completion_finish_reason_to_finish_reason(
         dynamo_protocols::types::CompletionFinishReason::Stop => {
             dynamo_protocols::types::FinishReason::Stop
         }
+        dynamo_protocols::types::CompletionFinishReason::Repetition => {
+            dynamo_protocols::types::FinishReason::Repetition
+        }
         dynamo_protocols::types::CompletionFinishReason::Length => {
             dynamo_protocols::types::FinishReason::Length
         }

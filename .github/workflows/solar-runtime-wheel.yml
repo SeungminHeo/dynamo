@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+name: Solar runtime wheel (personal fork)
+on:
+  push:
+    branches: [SeungminHeo/solar-rust-1.6.1]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: solar-runtime-wheel-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  wheel:
+    if: github.repository == 'SeungminHeo/dynamo'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    container: quay.io/pypa/manylinux_2_28_x86_64
+    env:
+      PATH: /opt/python/cp312-cp312/bin:/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      CARGO_BUILD_JOBS: '3'
+      CUDARC_CUDA_VERSION: '13000'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Install CPU build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y clang-devel openssl-devel zlib-devel pkgconf-pkg-config unzip
+          curl --fail --location --retry 3 https://sh.rustup.rs -o /tmp/rustup.sh
+          sh /tmp/rustup.sh -y --profile minimal --default-toolchain 1.96.1
+          curl --fail --location --retry 3 https://github.com/protocolbuffers/protobuf/releases/download/v30.2/protoc-30.2-linux-x86_64.zip -o /tmp/protoc.zip
+          unzip -q /tmp/protoc.zip -d /opt/protoc
+          echo /opt/protoc/bin >> "$GITHUB_PATH"
+          python -m pip install 'maturin[patchelf]==1.16.0'
+      - name: Build pinned runtime wheel for Python 3.12
+        working-directory: lib/bindings/python
+        shell: bash
+        run: |
+          set -euo pipefail
+          maturin build --locked --release --interpreter /opt/python/cp312-cp312/bin/python --compatibility manylinux_2_28 --features kv-indexer,slot-tracker,select-service,mm-routing,ais-forward-pass,request-trace-s3 --out ../../../dist
+      - name: Verify wheel parser registration without GPUs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --no-deps dist/ai_dynamo_runtime-*.whl
+          python - <<'PY'
+          from dynamo._core import get_reasoning_parser_names, get_tool_parser_names
+          assert 'solar_open2' in get_reasoning_parser_names()
+          assert 'solar_open2' in get_tool_parser_names()
+          print('Solar Open2 reasoning and tool parsers registered')
+          PY
+          sha256sum dist/*.whl > dist/SHA256SUMS
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
+        with:
+          name: solar-runtime-linux-x86_64-${{ github.sha }}
+          path: dist/*
+          if-no-files-found: error

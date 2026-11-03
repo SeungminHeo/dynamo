@@ -324,6 +324,7 @@ impl TryFrom<NvCreateCompletionResponse> for inference::ModelInferResponse {
                 Some(CompletionFinishReason::Stop) => "stop",
                 Some(CompletionFinishReason::Length) => "length",
                 Some(CompletionFinishReason::ContentFilter) => "content_filter",
+                Some(CompletionFinishReason::Repetition) => "repetition",
                 None => "",
             };
             finish_reason.push(reason_str.to_string());

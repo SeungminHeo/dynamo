@@ -827,6 +827,26 @@ mod tests {
     }
 
     #[test]
+    fn test_repetition_passes_through_from_backend() {
+        let request =
+            create_test_request_with_extra_fields(vec!["detailed_finish_reason".to_string()]);
+        let mut generator = request.response_generator("req-repetition-nvext".to_string());
+        let mut output = final_backend_output();
+        output.finish_reason = Some(serde_json::from_str(r#""repetition""#).unwrap());
+
+        let response = generator
+            .choice_from_postprocessor(output)
+            .expect("choice generation");
+        let response_json = serde_json::to_value(response).expect("serialize response");
+
+        assert_eq!(response_json["choices"][0]["finish_reason"], "repetition");
+        assert_eq!(
+            response_json["nvext"]["detailed_finish_reason"],
+            "repetition"
+        );
+    }
+
+    #[test]
     fn test_logprobs_zero_emits_chosen_token_logprob() {
         let mut request = create_test_request();
         request.inner.logprobs = Some(0);
