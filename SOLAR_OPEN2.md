@@ -3,11 +3,18 @@ SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All 
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# Solar Open2 on Dynamo 1.6.1
+# Solar Open2 downstream maintenance
 
 Downstream-only implementation tracked in [SeungminHeo/dynamo#1](https://github.com/SeungminHeo/dynamo/issues/1).
 The parser fork is pinned by immutable commit in both Cargo roots and lockfiles.
 The Python bindings are outside the workspace, so both patches are required.
+
+This `main` tree follows upstream Dynamo development (currently 1.7.0), with
+parser 10.2.2 and protocols 8.4.0. The separate
+`SeungminHeo/solar-rust-1.6.1` branch uses parser 10.0.7 and protocols 8.2.0.
+The installation, wheel workflow, release helper, and historical validation
+below describe that 1.6.1 release line. Main's current validation and the
+Hermes array fix are tracked in [PARSER_FIXES.md](PARSER_FIXES.md).
 
 Configure the Rust frontend with `--dyn-chat-processor dynamo`,
 `--dyn-reasoning-parser solar_open2` and `--dyn-tool-call-parser solar_open2`.
@@ -77,7 +84,7 @@ cargo test --locked -p dynamo-llm --no-default-features --test test_reasoning_pa
 cargo clippy --locked --no-deps -p dynamo-llm --no-default-features --all-targets -- -D warnings
 ```
 
-Local validation: 989 parser tests and 186 protocol tests pass. The Dynamo
+Historical 1.6.1 validation: 989 parser tests and 186 protocol tests pass. The Dynamo
 Solar/finish-reason suite passes 76 tests, including collected and streaming
 responses. The full macOS Dynamo library run passes 3,122 tests with 13 ignored;
 a discovery timing failure passes in isolation. A gRPC metrics-bind shutdown
