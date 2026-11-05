@@ -2250,6 +2250,102 @@ fn streaming_tool_request(
     request
 }
 
+#[tokio::test]
+async fn ordinary_json_answers_survive_tool_postprocessing_and_aggregation() {
+    for parser in ["hermes", "qwen25"] {
+        for reasoning_parser in [None, Some("qwen3")] {
+            let preprocessor = build_preprocessor(reasoning_parser, Some(parser));
+            for text in [
+                "[5, 0, 8]",
+                "[]",
+                r#"["a","b"]"#,
+                r#"[{"a":1},{"b":2}]"#,
+                "결과: [5, 0, 8]",
+                " \n[5, 0, 8]\t ",
+            ] {
+                for tool_mode in ["auto", "none", "absent"] {
+                    let mut request = streaming_tool_request(ChatCompletionToolChoiceOption::Auto);
+                    match tool_mode {
+                        "none" => {
+                            request.inner.tool_choice = Some(ChatCompletionToolChoiceOption::None)
+                        }
+                        "absent" => {
+                            request.inner.tools = None;
+                            request.inner.tool_choice = None;
+                        }
+                        _ => {}
+                    }
+                    for per_char in [false, true] {
+                        let mut chunks = Vec::new();
+                        if reasoning_parser.is_some() {
+                            chunks.push(mock_content_chunk("<think>checking</think>"));
+                        }
+                        if per_char {
+                            chunks.extend(
+                                text.char_indices().map(|(at, ch)| {
+                                    mock_content_chunk(&text[at..at + ch.len_utf8()])
+                                }),
+                            );
+                        } else {
+                            chunks.push(mock_content_chunk(text));
+                        }
+                        chunks.push(mock_final_chunk());
+                        let output: Vec<_> = preprocessor
+                            .postprocessor_parsing_stream(
+                                stream::iter(chunks.into_iter().map(Annotated::from_data)),
+                                &request,
+                                false,
+                                false,
+                            )
+                            .unwrap()
+                            .collect()
+                            .await;
+                        let mut content = String::new();
+                        let mut reasons = Vec::new();
+                        for chunk in &output {
+                            assert!(chunk.error.is_none());
+                            if let Some(data) = &chunk.data {
+                                for choice in &data.inner.choices {
+                                    if let Some(text) = &choice.delta.content {
+                                        content.push_str(get_text(text));
+                                    }
+                                    assert!(
+                                        choice.delta.tool_calls.as_ref().is_none_or(Vec::is_empty)
+                                    );
+                                    reasons.extend(choice.finish_reason);
+                                }
+                            }
+                        }
+                        assert_eq!(
+                            content, text,
+                            "{parser} reasoning={reasoning_parser:?} tools={tool_mode} per_char={per_char}"
+                        );
+                        assert_eq!(reasons, [FinishReason::Stop]);
+                        let response = NvCreateChatCompletionResponse::from_annotated_stream(
+                            stream::iter(output),
+                            ParsingOptions::default(),
+                        )
+                        .await
+                        .unwrap();
+                        let choice = &response.inner.choices[0];
+                        assert_eq!(get_text(choice.message.content.as_ref().unwrap()), text);
+                        assert!(choice.message.tool_calls.as_ref().is_none_or(Vec::is_empty));
+                        assert_eq!(choice.finish_reason, Some(FinishReason::Stop));
+                        assert_eq!(
+                            choice
+                                .message
+                                .reasoning_content
+                                .as_deref()
+                                .filter(|value| !value.is_empty()),
+                            reasoning_parser.map(|_| "checking")
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Streaming chat completion request with OpenAI structured output.
 fn streaming_json_schema_request(enable_thinking: bool) -> NvCreateChatCompletionRequest {
     serde_json::from_value(serde_json::json!({
