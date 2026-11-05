@@ -588,6 +588,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn solar_parallel_calls_keep_ids_indices_and_arguments() {
+        let raw = format!("{NATIVE}{NATIVE}");
+        for per_char in [false, true] {
+            let mut input = if per_char {
+                raw.chars()
+                    .map(|ch| chunk(Some(&ch.to_string()), None, 0))
+                    .collect::<Vec<_>>()
+            } else {
+                vec![chunk(Some(&raw), None, 0)]
+            };
+            input.push(chunk(None, Some("stop"), 0));
+            let out = run(&request(Some("low"), json!("auto")), input).await;
+            let parsed = calls(&out);
+            assert_eq!(parsed.len(), 2, "{out:?}");
+            assert_ne!(parsed[0]["id"], parsed[1]["id"]);
+            for (index, call) in parsed.iter().enumerate() {
+                assert_eq!(call["index"], index);
+                assert_eq!(call["function"]["name"], "search");
+                assert_eq!(
+                    serde_json::from_str::<Value>(call["function"]["arguments"].as_str().unwrap())
+                        .unwrap(),
+                    json!({"query":"서울","limit":7})
+                );
+            }
+            assert!(text(&out, "content").is_empty());
+        }
+    }
+
+    #[tokio::test]
     async fn solar_tool_escape_and_tool_choice_none() {
         let out = run(
             &request(None, json!("auto")),
