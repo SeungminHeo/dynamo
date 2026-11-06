@@ -1017,24 +1017,61 @@ async fn responses_reject_empty_input_and_required_tool_choice_without_tools() {
 
 #[tokio::test]
 #[serial]
-async fn chat_completions_reject_empty_tools() {
+async fn chat_completions_accept_empty_tools_without_forced_choice() {
     temp_env::async_with_vars(BASE_ENV, async {
-        let svc = HarnessService::start(Vec::new()).await;
-
-        let body = json!({
-            "model": MODEL,
-            "messages": [{"role": "user", "content": "ping"}],
-            "max_tokens": 10,
-            "tools": []
-        });
-        let response = post_json(&svc, "/v1/chat/completions", body).await;
-        assert_openai_error(
-            response,
-            ExpectedError::Validation,
-            "tools array cannot be empty; omit the field entirely to disable tool use",
-        )
-        .await;
-
+        let script = load_agent_fixture("text.sse").await.unwrap();
+        let svc = HarnessService::start(vec![script; 6]).await;
+        for streaming in [false, true] {
+            for choice in [None, Some("none"), Some("auto")] {
+                let mut body = json!({
+                    "model": MODEL,
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 10,
+                    "stream": streaming,
+                    "tools": []
+                });
+                if let Some(choice) = choice {
+                    body["tool_choice"] = choice.into();
+                }
+                let response = post_json(&svc, "/v1/chat/completions", body).await;
+                assert_eq!(
+                    response.status(),
+                    reqwest::StatusCode::OK,
+                    "stream={streaming} choice={choice:?}"
+                );
+                if streaming {
+                    let text = bounded(response.text()).await.unwrap();
+                    assert!(text.contains("[DONE]"));
+                    assert!(!text.contains("\"error\""));
+                } else {
+                    let body: Value = bounded(response.json()).await.unwrap();
+                    assert!(body["choices"][0]["message"]["content"].is_string());
+                }
+            }
+        }
+        assert_eq!(svc.engine.take_requests().await.len(), 6);
+        for (choice, message) in [
+            (
+                json!("required"),
+                "tool_choice is \"required\" but tools is empty",
+            ),
+            (
+                json!({"type":"function", "function":{"name":"lookup"}}),
+                "tool named \"lookup\" in tool_choice is not present in tools",
+            ),
+        ] {
+            let response = post_json(
+                &svc,
+                "/v1/chat/completions",
+                json!({
+                    "model": MODEL,
+                    "messages": [{"role":"user", "content":"ping"}],
+                    "tools": [], "tool_choice": choice,
+                }),
+            )
+            .await;
+            assert_openai_error(response, ExpectedError::Validation, message).await;
+        }
         assert!(svc.engine.take_requests().await.is_empty());
         svc.shutdown().await;
     })

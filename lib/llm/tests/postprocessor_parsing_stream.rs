@@ -2116,12 +2116,13 @@ async fn ordinary_json_answers_survive_tool_postprocessing_and_aggregation() {
                 .into_iter()
                 .filter(|_| parser == "hermes"),
             ) {
-                for tool_mode in ["auto", "none", "absent"] {
+                for tool_mode in ["auto", "none", "absent", "empty"] {
                     let mut request = streaming_tool_request(ChatCompletionToolChoiceOption::Auto);
                     match tool_mode {
                         "none" => {
                             request.inner.tool_choice = Some(ChatCompletionToolChoiceOption::None)
                         }
+                        "empty" => request.inner.tools = Some(Vec::new()),
                         "absent" => {
                             request.inner.tools = None;
                             request.inner.tool_choice = None;
