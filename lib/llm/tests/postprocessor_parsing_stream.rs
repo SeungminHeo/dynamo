@@ -2103,7 +2103,19 @@ async fn ordinary_json_answers_survive_tool_postprocessing_and_aggregation() {
                 r#"[{"a":1},{"b":2}]"#,
                 "결과: [5, 0, 8]",
                 " \n[5, 0, 8]\t ",
-            ] {
+            ]
+            .into_iter()
+            .chain(
+                [
+                    r#"{"name":"Alice"}"#,
+                    r#"[{"name":"Alice"}]"#,
+                    r#"{"name":"lookup","arguments":{}}"#,
+                    r#"[{"name":"lookup","arguments":{}}]"#,
+                    r#"결과: {"name":"Alice","parameters":{}}"#,
+                ]
+                .into_iter()
+                .filter(|_| parser == "hermes"),
+            ) {
                 for tool_mode in ["auto", "none", "absent"] {
                     let mut request = streaming_tool_request(ChatCompletionToolChoiceOption::Auto);
                     match tool_mode {
@@ -6489,6 +6501,63 @@ async fn explicit_v2_rejects_legacy_and_mixed_stream_parser_pairs() {
                 .to_string()
                 .contains("no compatible unified v2 implementation"),
             "{reasoning:?}/{parser:?}: {error}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn hermes_marker_policy_preserves_guided_stream() {
+    for (choice, raw) in [
+        (
+            ChatCompletionToolChoiceOption::Required,
+            r#"[{"name":"get_weather","arguments":{"location":"Paris"}}]"#,
+        ),
+        (
+            ChatCompletionToolChoiceOption::Named("get_weather".to_string().into()),
+            r#"{"location":"Paris"}"#,
+        ),
+        (
+            ChatCompletionToolChoiceOption::Auto,
+            r#"<tool_call>{"name":"get_weather","arguments":{"location":"Paris"}}</tool_call>"#,
+        ),
+    ] {
+        let request = streaming_tool_request(choice);
+        let preprocessor = build_preprocessor(None, Some("hermes"));
+        let mut chunks: Vec<_> = raw
+            .char_indices()
+            .map(|(at, ch)| mock_content_chunk(&raw[at..at + ch.len_utf8()]))
+            .collect();
+        chunks.push(mock_final_chunk());
+        let output: Vec<_> = preprocessor
+            .postprocessor_parsing_stream(
+                stream::iter(chunks.into_iter().map(Annotated::from_data)),
+                &request,
+                false,
+                false,
+            )
+            .unwrap()
+            .collect()
+            .await;
+        assert!(output.iter().all(|chunk| chunk.error.is_none()));
+        let response = NvCreateChatCompletionResponse::from_annotated_stream(
+            stream::iter(output),
+            ParsingOptions::default(),
+        )
+        .await
+        .unwrap();
+        let message = &response.inner.choices[0].message;
+        assert!(
+            message
+                .content
+                .as_ref()
+                .is_none_or(|c| get_text(c).is_empty())
+        );
+        let calls = message.tool_calls.as_ref().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].function.name, "get_weather");
+        assert_eq!(
+            serde_json::from_str::<Value>(&calls[0].function.arguments).unwrap(),
+            serde_json::json!({"location":"Paris"})
         );
     }
 }

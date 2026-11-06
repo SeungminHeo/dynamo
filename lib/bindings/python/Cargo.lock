@@ -2349,7 +2349,7 @@ dependencies = [
 [[package]]
 name = "dynamo-parsers"
 version = "10.0.7"
-source = "git+https://github.com/SeungminHeo/frontend-crates.git?rev=4a9f26c2ab9aa4272b6391bb6abe3920179ea3db#4a9f26c2ab9aa4272b6391bb6abe3920179ea3db"
+source = "git+https://github.com/SeungminHeo/frontend-crates.git?rev=8870bba39bd875abaf266c3e02ac8cd1385ad4af#8870bba39bd875abaf266c3e02ac8cd1385ad4af"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -2389,7 +2389,7 @@ dependencies = [
 [[package]]
 name = "dynamo-protocols"
 version = "8.2.0"
-source = "git+https://github.com/SeungminHeo/frontend-crates.git?rev=4a9f26c2ab9aa4272b6391bb6abe3920179ea3db#4a9f26c2ab9aa4272b6391bb6abe3920179ea3db"
+source = "git+https://github.com/SeungminHeo/frontend-crates.git?rev=8870bba39bd875abaf266c3e02ac8cd1385ad4af#8870bba39bd875abaf266c3e02ac8cd1385ad4af"
 dependencies = [
  "async-openai",
  "derive_builder",
