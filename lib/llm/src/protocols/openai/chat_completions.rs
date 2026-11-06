@@ -1726,11 +1726,8 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_rejects_empty_tools_array() {
-        const EMPTY_TOOLS: &str =
-            "tools array cannot be empty; omit the field entirely to disable tool use";
-
-        for tool_choice in [None, Some("required")] {
+    fn test_validate_accepts_empty_tools_without_forced_choice() {
+        for tool_choice in [None, Some("none"), Some("auto")] {
             let mut request_json = json!({
                 "model": "test-model",
                 "messages": [{"role": "user", "content": "Hello"}],
@@ -1742,8 +1739,8 @@ mod tests {
             let request: NvCreateChatCompletionRequest =
                 serde_json::from_value(request_json).expect("Failed to deserialize request");
 
-            let err = ValidateRequest::validate(&request).expect_err("empty tools must fail");
-            assert_eq!(err.to_string(), EMPTY_TOOLS, "tool_choice={tool_choice:?}");
+            ValidateRequest::validate(&request)
+                .expect("empty tools without a forced choice should validate");
         }
 
         let request: NvCreateChatCompletionRequest = serde_json::from_value(json!({
