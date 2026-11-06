@@ -233,5 +233,5 @@ debug = true
 strip = false
 
 [patch.crates-io]
-dynamo-parsers = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "4a9f26c2ab9aa4272b6391bb6abe3920179ea3db" }
-dynamo-protocols = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "4a9f26c2ab9aa4272b6391bb6abe3920179ea3db" }
+dynamo-parsers = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "8870bba39bd875abaf266c3e02ac8cd1385ad4af" }
+dynamo-protocols = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "8870bba39bd875abaf266c3e02ac8cd1385ad4af" }
