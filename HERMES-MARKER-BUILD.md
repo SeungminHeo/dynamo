@@ -6,6 +6,11 @@ Explicit guided bare JSON remains supported. Tagged name-only calls retain
 empty-argument recovery. Qwen25 keeps its previous behavior. This is a personal
 policy change, separate from upstream frontend-crates PR #559.
 
+This runtime also accepts `tools: []` when `tool_choice` is omitted, `none`, or
+`auto`. Required/named choices still require actual tools (including tools
+supplied through system messages). Strict schema validation is unchanged.
+Tracked in personal-fork issue #3.
+
 ## Pinned sources
 
 - Dynamo release branch: `SeungminHeo/solar-rust-1.6.1`
@@ -36,10 +41,7 @@ SHA256; the package version alone does not identify this custom build.
 
 ## Build without GitHub Actions
 
-At setup time GitHub rejected dispatch with HTTP 422, "Actions has been disabled
-for this repository", despite repository permissions reporting enabled and the
-workflow reporting active. No new wheel was produced by that dispatch. The
-underlying account/organization restriction has not been determined.
+Use this fallback when GitHub Actions is unavailable.
 
 On a Linux x86_64 builder with Rust 1.96.1, protoc 30.2, Python 3.12, clang,
 OpenSSL/zlib development headers and `maturin[patchelf]==1.16.0` installed:

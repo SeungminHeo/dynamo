@@ -69,6 +69,7 @@ jobs:
               "parser_commit": parser["rev"],
               "hermes_native_requires_start_token": True,
               "guided_bare_json_preserved": True,
+              "empty_tools_allowed_without_forced_choice": True,
               "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
           }
           pathlib.Path("dist/build-info.json").write_text(json.dumps(info, indent=2) + "\n")

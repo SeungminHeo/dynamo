@@ -509,7 +509,7 @@ fn validate_json_object_string(value: &str, field: String) -> Result<(), anyhow:
 }
 
 /// Merges and validates request tools and tools declared in system messages.
-/// An explicitly empty request list is invalid unless system messages supply tools.
+/// An empty request list is valid; forced choices are validated against the merged tools.
 pub(crate) fn validated_effective_tools(
     request: &CreateChatCompletionRequest,
 ) -> Result<Cow<'_, [ChatCompletionTool]>, anyhow::Error> {
@@ -518,13 +518,6 @@ pub(crate) fn validated_effective_tools(
         .enumerate()
         .map(|(index, tool)| normalize_dynamic_system_tool(tool, index))
         .collect::<Result<Vec<_>, _>>()?;
-
-    // Check the request field, not the merged slice below: an omitted `tools`
-    // field also produces an empty slice and must stay valid. System-message
-    // tools still make an explicit `tools: []` usable.
-    if dynamic_tools.is_empty() && request.tools.as_ref().is_some_and(|tools| tools.is_empty()) {
-        anyhow::bail!("tools array cannot be empty; omit the field entirely to disable tool use");
-    }
 
     let tools = if dynamic_tools.is_empty() {
         Cow::Borrowed(request.tools.as_deref().unwrap_or_default())
