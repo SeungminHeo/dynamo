@@ -1255,3 +1255,29 @@ async fn explicit_v2_rejects_unsupported_batch_parser_for_every_tool_choice() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_hermes_marker_policy_preserves_guided_batch() {
+    for (raw, constraint) in [
+        (
+            r#"[{"name":"get_weather","parameters":{"location":"Paris"}}]"#,
+            GuidedToolConstraint::GuidedJsonRequired,
+        ),
+        (
+            r#"{"location":"Paris"}"#,
+            GuidedToolConstraint::GuidedJsonNamed {
+                tool_name: "get_weather".to_string(),
+            },
+        ),
+    ] {
+        let result = NvCreateChatCompletionResponse::from_annotated_stream(
+            futures::stream::iter([make_stream_delta(Some(raw), None)]),
+            ParsingOptions::new(Some("hermes".to_string()), None)
+                .with_guided_tool_constraint(constraint),
+        )
+        .await
+        .unwrap();
+
+        assert_guided_batch_call(&result);
+    }
+}
