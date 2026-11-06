@@ -1,4 +1,4 @@
-# Personal Hermes marker policy build
+# Axiom runtime build and branch maintenance
 
 This fork requires `<tool_call>` for native Hermes tool extraction. Unmarked
 JSON, including `{"name":"Alice"}` and tool-shaped arrays, remains content.
@@ -13,7 +13,7 @@ Tracked in personal-fork issue #3.
 
 ## Optional strict-schema migration mode
 
-The 1.6.1 runtime backports upstream #17163 (`a0de541ea8`); personal main already
+The 1.6.1 runtime backports upstream #17163 (`a0de541ea8`); `axiom/main` already
 has that feature. To temporarily accept function schemas that do not meet the
 OpenAI strict subset, set this on the **frontend** before process startup:
 
@@ -29,11 +29,21 @@ apply, and response_format validation is unchanged. This does not guarantee
 OpenAI strict semantics for an incomplete schema. Remove the override after
 clients migrate. Tracked in personal-fork issue #4.
 
+## Maintained branches
+
+- `axiom/main`: development patches on the upstream main lineage.
+- `axiom/release/1.6.1`: the existing 1.6.1 patch stack; build 1.6.1 images from this line.
+- Land shared fixes on `axiom/main`, then cherry-pick selected fixes with `git cherry-pick -x` onto the release line. Release-only adaptations stay on the release line and document why.
+- Do not merge the entire development branch into a release branch or force-reset either maintained branch. Review upstream updates on the matching line.
+- The old personal `main` and `SeungminHeo/solar-rust-1.6.1` branches are retained as migration references; future Axiom work uses the two branches above.
+- Published `axiom-runtime-*` tags and wheel hashes remain immutable. Branch/documentation changes alone do not require rebuilding the published wheel.
+- The workflow filename remains `solar-runtime-wheel.yml` for existing GitHub workflow dispatch compatibility; its display name and new artifact names use Axiom.
+
 ## Pinned sources
 
-- Dynamo release branch: `SeungminHeo/solar-rust-1.6.1`
+- Dynamo release branch: `axiom/release/1.6.1`
 - Release parser/protocol source: `8870bba39bd875abaf266c3e02ac8cd1385ad4af`
-- Dynamo personal main parser/protocol source: `dc397c2236ec16ad2cebf004ea1176c927f88ff7`
+- Dynamo `axiom/main` parser/protocol source: `dc397c2236ec16ad2cebf004ea1176c927f88ff7`
 - Parser repository: https://github.com/SeungminHeo/frontend-crates
 
 Both workspace and Python binding manifests and lockfiles pin the same source
@@ -44,10 +54,10 @@ reuse the earlier Solar wheel: that wheel does not contain this policy.
 
 The personal-fork-only `solar-runtime-wheel.yml` builds on manylinux_2_28 x86_64
 with Rust 1.96.1 and the CI runtime features. A push to the release branch starts
-it automatically. Manual build (also supported on personal `main`):
+it automatically. Manual build (also supported on `axiom/main`):
 
 ```sh
-gh workflow run solar-runtime-wheel.yml --repo SeungminHeo/dynamo --ref SeungminHeo/solar-rust-1.6.1
+gh workflow run solar-runtime-wheel.yml --repo SeungminHeo/dynamo --ref axiom/release/1.6.1
 gh run list --repo SeungminHeo/dynamo --workflow solar-runtime-wheel.yml --limit 5
 # After the selected run succeeds:
 gh run download RUN_ID --repo SeungminHeo/dynamo --dir wheel-artifacts
@@ -65,7 +75,7 @@ On a Linux x86_64 builder with Rust 1.96.1, protoc 30.2, Python 3.12, clang,
 OpenSSL/zlib development headers and `maturin[patchelf]==1.16.0` installed:
 
 ```sh
-git clone --branch SeungminHeo/solar-rust-1.6.1 https://github.com/SeungminHeo/dynamo.git
+git clone --branch axiom/release/1.6.1 https://github.com/SeungminHeo/dynamo.git
 cd dynamo
 # Record/pin the exact revision before building.
 git rev-parse HEAD
@@ -84,7 +94,7 @@ Use the `quay.io/pypa/manylinux_2_28_x86_64` environment from the workflow for
 portable manylinux artifacts. On a newer Linux host, auditwheel may reject the
 requested compatibility; do not relabel an incompatible wheel. The workflow's
 "Install CPU build tools" step contains the exact container setup commands.
-For manually built wheels, copy `dist/` to a `wheel-artifacts/solar-runtime-linux-x86_64-COMMIT/`
+For manually built wheels, copy `dist/` to a `wheel-artifacts/axiom-runtime-linux-x86_64-COMMIT/`
 directory before using the Dockerfile snippet below; retain the commit alongside
 the checksum. No CUDA device is needed for the wheel build.
 
@@ -95,7 +105,7 @@ image, keep the existing `ai-dynamo==1.6.1` Python package and overlay this
 runtime wheel in the final frontend image stage:
 
 ```dockerfile
-COPY wheel-artifacts/solar-runtime-linux-x86_64-*/ /tmp/custom-runtime/
+COPY wheel-artifacts/axiom-runtime-linux-x86_64-*/ /tmp/custom-runtime/
 RUN cd /tmp/custom-runtime && \
     sed 's@dist/@@' SHA256SUMS | sha256sum -c - && \
     python3 -m pip install --no-deps --force-reinstall ./ai_dynamo_runtime-*.whl && \
