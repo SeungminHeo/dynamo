@@ -34,6 +34,40 @@ The artifact contains the wheel, `SHA256SUMS`, and `build-info.json` with the
 Dynamo commit, parser commit, and build run URL. Pin the run/commit and wheel
 SHA256; the package version alone does not identify this custom build.
 
+## Build without GitHub Actions
+
+At setup time GitHub rejected dispatch with HTTP 422, "Actions has been disabled
+for this repository", despite repository permissions reporting enabled and the
+workflow reporting active. No new wheel was produced by that dispatch. The
+underlying account/organization restriction has not been determined.
+
+On a Linux x86_64 builder with Rust 1.96.1, protoc 30.2, Python 3.12, clang,
+OpenSSL/zlib development headers and `maturin[patchelf]==1.16.0` installed:
+
+```sh
+git clone --branch SeungminHeo/solar-rust-1.6.1 https://github.com/SeungminHeo/dynamo.git
+cd dynamo
+# Record/pin the exact revision before building.
+git rev-parse HEAD
+cd lib/bindings/python
+CARGO_BUILD_JOBS=3 CUDARC_CUDA_VERSION=13000 \
+CARGO_PROFILE_RELEASE_DEBUG=0 CARGO_PROFILE_RELEASE_LTO=false \
+maturin build --locked --release --interpreter python3.12 \
+  --compatibility manylinux_2_28 \
+  --features kv-indexer,slot-tracker,select-service,mm-routing,ais-forward-pass,request-trace-s3 \
+  --out ../../../dist
+cd ../../..
+sha256sum dist/*.whl > dist/SHA256SUMS
+```
+
+Use the `quay.io/pypa/manylinux_2_28_x86_64` environment from the workflow for
+portable manylinux artifacts. On a newer Linux host, auditwheel may reject the
+requested compatibility; do not relabel an incompatible wheel. The workflow's
+"Install CPU build tools" step contains the exact container setup commands.
+For manually built wheels, copy `dist/` to a `wheel-artifacts/solar-runtime-linux-x86_64-COMMIT/`
+directory before using the Dockerfile snippet below; retain the commit alongside
+the checksum. No CUDA device is needed for the wheel build.
+
 ## Frontend image
 
 Use the wheel built from the matching Dynamo branch/version. For the 1.6.1
