@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-name: Solar runtime wheel (personal fork)
+name: Axiom runtime wheel (personal fork)
 on:
   push:
-    branches: [SeungminHeo/solar-rust-1.6.1]
+    branches: [axiom/release/1.6.1]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: solar-runtime-wheel-${{ github.ref }}
+  group: axiom-runtime-wheel-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   wheel:
@@ -79,6 +79,6 @@ jobs:
           sha256sum dist/*.whl > dist/SHA256SUMS
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6.0.0
         with:
-          name: solar-runtime-linux-x86_64-${{ github.sha }}
+          name: axiom-runtime-linux-x86_64-${{ github.sha }}
           path: dist/*
           if-no-files-found: error
