@@ -70,6 +70,8 @@ jobs:
               "hermes_native_requires_start_token": True,
               "guided_bare_json_preserved": True,
               "empty_tools_allowed_without_forced_choice": True,
+              "strict_schema_migration_env": "DYN_DISABLE_OPENAI_STRICT_SCHEMA_VALIDATION",
+              "strict_schema_validation_default": "enabled",
               "run_url": f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
           }
           pathlib.Path("dist/build-info.json").write_text(json.dumps(info, indent=2) + "\n")

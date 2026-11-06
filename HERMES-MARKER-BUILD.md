@@ -11,6 +11,24 @@ This runtime also accepts `tools: []` when `tool_choice` is omitted, `none`, or
 supplied through system messages). Strict schema validation is unchanged.
 Tracked in personal-fork issue #3.
 
+## Optional strict-schema migration mode
+
+The 1.6.1 runtime backports upstream #17163 (`a0de541ea8`); personal main already
+has that feature. To temporarily accept function schemas that do not meet the
+OpenAI strict subset, set this on the **frontend** before process startup:
+
+```dockerfile
+ENV DYN_DISABLE_OPENAI_STRICT_SCHEMA_VALIDATION=1
+```
+
+Or set the same environment variable in the frontend deployment. Unset/false
+keeps strict function-schema prevalidation enabled. The setting is latched at
+startup; restart the frontend after changing it. Request schema and strict flags
+are preserved, not rewritten. Basic validation and backend constraints still
+apply, and response_format validation is unchanged. This does not guarantee
+OpenAI strict semantics for an incomplete schema. Remove the override after
+clients migrate. Tracked in personal-fork issue #4.
+
 ## Pinned sources
 
 - Dynamo release branch: `SeungminHeo/solar-rust-1.6.1`
