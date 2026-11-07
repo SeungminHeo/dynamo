@@ -861,7 +861,7 @@ fn bare_json_starting_state(family: &str) -> UnifiedParserStartingState {
 /// neither marker means reasoning never ran for this turn.
 fn detect_prefill(family: &str, content: &str) -> anyhow::Result<UnifiedParserStartingState> {
     match family {
-        "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" | "minimax_m3"
+        "hermes" | "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" | "minimax_m3"
         | "nemotron_v3" => {
             let (opener_marker, closer_marker) = reasoning_marker_pair(family)
                 .expect("think-marker families have a configured reasoning pair");
@@ -959,7 +959,7 @@ fn beam_prefill(content: &str) -> UnifiedParserStartingState {
 fn reasoning_marker_pair(family: &str) -> Option<(&'static str, &'static str)> {
     match family {
         "minimax_m3" => Some(("<mm:think>", "</mm:think>")),
-        "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" | "nemotron_v3" => {
+        "hermes" | "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" | "nemotron_v3" => {
             Some(("<think>", "</think>"))
         }
         "gemma4" => Some(("<|channel>", "<channel|>")),
