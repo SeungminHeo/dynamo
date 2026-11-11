@@ -271,6 +271,8 @@ mod tests {
                             // Spark's template has no reasoning-off mode; keep parsing
                             // its private channel even when thinking=false is requested.
                             "muse_spark" => false,
+                            // A.X-K3's template always opens a thought.
+                            "ax_k3" => false,
                             _ => thinking == Some(false),
                         },
                         "{selector} {tool:?} {reasoning:?} {thinking:?}"

@@ -11,6 +11,8 @@
 //!
 //! The Preprocessor will accept any IngressRequest and transform it to a BackendRequest.
 
+#[cfg(test)]
+mod ax_k3_tests;
 pub mod media;
 #[cfg(feature = "mm-routing")]
 pub mod mm_routing;
@@ -2582,7 +2584,8 @@ impl OpenAIPreprocessor {
             Some("muse_spark_open" | "muse_spark") => true,
 
             // These SGLang reasoners do not expose a per-request off mode.
-            Some("deepseek_r1" | "step3" | "gpt_oss" | "kimi") => true,
+            // A.X-K3's template always opens `<think>` (`reasoning_effort` only sets strength).
+            Some("deepseek_r1" | "step3" | "gpt_oss" | "kimi" | "ax_k3" | "axk3" | "ax-k3") => true,
             _ => false,
         }
     }
@@ -7529,14 +7532,22 @@ impl OpenAIPreprocessor {
         .flatten();
         let response =
             beam_channel == Some(dynamo_parsers_v2::UnifiedParserStartingState::Response);
+        // A.X-K3 starts in reasoning by default; a prompt that already closed the
+        // thought (`<think></think>`) starts generation in the answer.
+        let ax_k3_closed_thought = family
+            == Some(
+                crate::protocols::openai::chat_completions::unified_parser::AX_K3_UNIFIED_FAMILY,
+            )
+            && formatted_prompt.is_some_and(|prompt| prompt.trim_end().ends_with("</think>"));
         PromptReasoningPrefill {
             legacy,
             unified: unified || family == Some("gemma4") && prefix.is_some(),
             // A bare None state synthesizes an unfinished assistant header in ChoiceState.
-            unified_starting_state: (family == Some("gpt_oss")
+            unified_starting_state: ((family == Some("gpt_oss")
                 && prefix.is_none()
                 && formatted_prompt.is_some_and(|prompt| prompt.contains("<|start|>")))
-            .then_some(dynamo_parsers_v2::UnifiedParserStartingState::Response),
+                || ax_k3_closed_thought)
+                .then_some(dynamo_parsers_v2::UnifiedParserStartingState::Response),
             prefix,
             reasoning_closed_by_prompt,
             response,
@@ -7620,6 +7631,9 @@ impl OpenAIPreprocessor {
                 // reasoning separate instead of folding it into visible content.
                 // `muse_spark_open` resolves to the canonical `muse_spark` family here.
                 "muse_spark" => false,
+                // A.X-K3's template has no thinking-off switch; a prompt that closes the
+                // thought anyway is read in `prompt_reasoning_prefill_at_boundary`.
+                "ax_k3" => false,
                 "deepseek_v4" | "deepseek_v41" => {
                     !Self::deepseek_renderer_reasoning_enabled(chat_template_args.as_ref(), true)
                 }

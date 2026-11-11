@@ -50,7 +50,7 @@ mod tests {
 
     #[test]
     fn unified_families_are_selectable_in_both_lists() {
-        for parser in ["muse_glimmer", "muse_spark", "muse_spark_open"] {
+        for parser in ["muse_glimmer", "muse_spark", "muse_spark_open", "ax_k3"] {
             assert!(
                 get_tool_parser_names().contains(&parser),
                 "{parser} must be a selectable tool-call parser name"
