@@ -231,3 +231,7 @@ lto = "thin"
 inherits = "release"
 debug = true
 strip = false
+
+# A.X-K3 `ax_k3` unified parser (personal fork branch ax-k3-unified-0.7.24, based on dynamo-parsers-v2 0.7.24).
+[patch.crates-io]
+dynamo-parsers-v2 = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "53ca55aaf4b7df04584abf7222bc0fd4ad182e3b" }

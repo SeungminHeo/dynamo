@@ -198,6 +198,9 @@ pub struct PromptReasoningPrefill {
     legacy: bool,
     unified: bool,
     prefix: Option<&'static str>,
+    /// The rendered prompt already closed the thought (A.X-K3 `<think></think>`):
+    /// the unified parser starts in the answer.
+    response_start: bool,
 }
 
 impl From<bool> for PromptReasoningPrefill {
@@ -207,6 +210,7 @@ impl From<bool> for PromptReasoningPrefill {
             legacy: value,
             unified: value,
             prefix: None,
+            response_start: false,
         }
     }
 }
@@ -359,6 +363,9 @@ pub(crate) fn decode_base64_to_floats(encoded: &str) -> Result<Vec<f32>, String>
         .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect())
 }
+
+#[cfg(test)]
+mod ax_k3_tests;
 
 #[cfg(test)]
 mod embedding_base64_transport_tests {
@@ -2216,7 +2223,8 @@ impl OpenAIPreprocessor {
                 .is_none_or(|mode| mode != "disabled"),
 
             // These SGLang reasoners do not expose a per-request off mode.
-            Some("deepseek_r1" | "step3" | "gpt_oss" | "kimi") => true,
+            // A.X-K3's template always opens `<think>` (`reasoning_effort` only sets strength).
+            Some("deepseek_r1" | "step3" | "gpt_oss" | "kimi" | "ax_k3" | "axk3" | "ax-k3") => true,
             _ => false,
         }
     }
@@ -5287,10 +5295,11 @@ impl OpenAIPreprocessor {
                     tool_definitions,
                     guided_tool_constraint,
                     unified_parser::StreamPrefill {
-                        starting_state: unified_parser::stream_prefill(
-                            family,
-                            prompt_injected_reasoning,
-                        ),
+                        starting_state: if prompt_prefill.response_start {
+                            dynamo_parsers_v2::UnifiedParserStartingState::Response
+                        } else {
+                            unified_parser::stream_prefill(family, prompt_injected_reasoning)
+                        },
                         prefix: prompt_prefill.prefix,
                     },
                     family,
@@ -6697,10 +6706,20 @@ impl OpenAIPreprocessor {
             } else {
                 None
             };
+        // A.X-K3 starts in reasoning by default; a prompt that already closed the
+        // thought (`<think></think>`) starts generation in the answer.
+        let response_start =
+            crate::protocols::openai::chat_completions::unified_parser::configured_family(
+                tool_call_parser,
+                reasoning_parser,
+            ) == Some(
+                crate::protocols::openai::chat_completions::unified_parser::AX_K3_UNIFIED_FAMILY,
+            ) && formatted_prompt.is_some_and(|prompt| prompt.trim_end().ends_with("</think>"));
         PromptReasoningPrefill {
             legacy,
             unified: unified || prefix.is_some(),
             prefix,
+            response_start,
         }
     }
 
@@ -6768,6 +6787,9 @@ impl OpenAIPreprocessor {
             let thinking = dynamo_renderer::thinking_bool_from_args(chat_template_args.as_ref());
             return match family {
                 "gemma4" => thinking != Some(true),
+                // A.X-K3's template has no thinking-off switch; a prompt that closes the
+                // thought anyway is read in `prompt_reasoning_prefill_for_parsers`.
+                "ax_k3" => false,
                 "deepseek_v4" | "deepseek_v41" => {
                     !Self::deepseek_renderer_reasoning_enabled(chat_template_args.as_ref(), true)
                 }
