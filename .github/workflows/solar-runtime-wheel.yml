@@ -3,7 +3,7 @@
 name: Axiom runtime wheel (personal fork)
 on:
   push:
-    branches: [axiom/release/1.6.1]
+    branches: [axiom/release/1.6.1, axiom/release/1.6.2]
   workflow_dispatch:
 permissions:
   contents: read
@@ -58,15 +58,22 @@ jobs:
           assert 'solar_open2' in get_reasoning_parser_names()
           assert 'solar_open2' in get_tool_parser_names()
           print('Solar Open2 reasoning and tool parsers registered')
+          assert 'ax_k3' in get_reasoning_parser_names()
+          assert 'ax_k3' in get_tool_parser_names()
+          print('A.X-K3 ax_k3 unified parser registered')
           PY
           /opt/solar-build/bin/python - <<'PYINFO'
           import json, os, pathlib, tomllib
           manifest = tomllib.loads(pathlib.Path("Cargo.toml").read_text())
           parser = manifest["patch"]["crates-io"]["dynamo-parsers"]
+          parser_v2 = manifest["patch"]["crates-io"].get("dynamo-parsers-v2", {})
           info = {
               "dynamo_commit": os.environ["GITHUB_SHA"],
               "parser_git": parser["git"],
               "parser_commit": parser["rev"],
+              "parser_v2_git": parser_v2.get("git"),
+              "parser_v2_commit": parser_v2.get("rev"),
+              "ax_k3_call_group_policy": "all",
               "hermes_native_requires_start_token": True,
               "guided_bare_json_preserved": True,
               "empty_tools_allowed_without_forced_choice": True,

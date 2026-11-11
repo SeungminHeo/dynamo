@@ -73,6 +73,12 @@ pub(crate) const DEEPSEEK_V4_UNIFIED_FAMILY: &str = "deepseek_v4";
 pub(crate) const GEMMA4_UNIFIED_FAMILY: &str = "gemma4";
 pub(crate) const GLM47_UNIFIED_FAMILY: &str = "glm47";
 pub(crate) const MUSE_UNIFIED_FAMILY: &str = "muse_glimmer";
+/// A.X-K3 (internal fork): DeepSeek-R1-style forced `<think>` reasoning over the
+/// `<tool_call>NAME<|parameter|>KEY\nVALUE<|/parameter|></tool_call>` grammar. The
+/// chat template opens `<think>` in the generation prompt.
+pub(crate) const AX_K3_UNIFIED_FAMILY: &str = "ax_k3";
+/// The legacy reasoning parser A.X-K3 deployments used before `ax_k3` existed.
+const AX_K3_LEGACY_REASONING_PARSER: &str = "deepseek_r1";
 
 /// Dynamo's `--dyn-tool-call-parser` name that pairs into [`QWEN3_UNIFIED_FAMILY`].
 const QWEN3_TOOL_CALL_PARSER: &str = "qwen3_coder";
@@ -109,6 +115,13 @@ pub(crate) fn configured_family(
     reasoning_parser: Option<&str>,
 ) -> Option<&'static str> {
     match (tool_call_parser, reasoning_parser) {
+        // `deepseek_r1` has no unified family of its own; with the A.X-K3 tool grammar it
+        // is the same forced-`<think>` channel the `ax_k3` family owns.
+        (Some(tool), Some(AX_K3_LEGACY_REASONING_PARSER))
+            if canonical_family(tool) == Some(AX_K3_UNIFIED_FAMILY) =>
+        {
+            Some(AX_K3_UNIFIED_FAMILY)
+        }
         (Some(tool), Some(reasoning)) => {
             let family = canonical_family(tool)?;
             (canonical_family(reasoning)? == family).then_some(family)
@@ -155,9 +168,11 @@ fn selected_family_for_selection(
 ) -> Option<&'static str> {
     match selection {
         dynamo_runtime::config::ParserVersion::Auto => configured.filter(|family| {
-            *family == DEEPSEEK_V41_UNIFIED_FAMILY
+            (*family == DEEPSEEK_V41_UNIFIED_FAMILY
                 && tool_call_parser == Some(DEEPSEEK_V41_UNIFIED_FAMILY)
-                && reasoning_parser == Some(DEEPSEEK_V41_UNIFIED_FAMILY)
+                && reasoning_parser == Some(DEEPSEEK_V41_UNIFIED_FAMILY))
+                // A.X-K3 has no v1 parser, so `auto` selects it like DeepSeek V4.1.
+                || *family == AX_K3_UNIFIED_FAMILY
         }),
         dynamo_runtime::config::ParserVersion::V1 => None,
         dynamo_runtime::config::ParserVersion::V2 => configured,
@@ -687,6 +702,8 @@ pub(crate) fn stream_prefill(
         // so the model emits `<think>` itself when it thinks.
         QWEN3_UNIFIED_FAMILY => UnifiedParserStartingState::None,
         DEEPSEEK_V41_UNIFIED_FAMILY => UnifiedParserStartingState::None,
+        // A.X-K3's template always opens `<think>`; the parser default is the same.
+        AX_K3_UNIFIED_FAMILY => UnifiedParserStartingState::Reasoning,
         _ => UnifiedParserStartingState::None,
     }
 }
@@ -739,7 +756,7 @@ fn bare_guided_json_prefill(
 /// neither marker means reasoning never ran for this turn.
 fn detect_prefill(family: &str, content: &str) -> anyhow::Result<UnifiedParserStartingState> {
     match family {
-        "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" => {
+        "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" | "ax_k3" => {
             let (opener_marker, closer_marker) = reasoning_marker_pair(family)
                 .expect("think-marker families have a configured reasoning pair");
             // Compare FIRST-occurrence positions, not mere presence: a prompt that
@@ -784,7 +801,7 @@ fn detect_prefill(family: &str, content: &str) -> anyhow::Result<UnifiedParserSt
 
 fn reasoning_marker_pair(family: &str) -> Option<(&'static str, &'static str)> {
     match family {
-        "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" => {
+        "qwen3" | "deepseek_v4" | "deepseek_v41" | "glm47" | "kimi_k2" | "ax_k3" => {
             Some(("<think>", "</think>"))
         }
         "gemma4" => Some(("<|channel>", "<channel|>")),
@@ -960,6 +977,10 @@ pub(crate) fn unquoted_native_tool_call_marker_or_prefix_start(
 }
 
 fn native_tool_call_start_tokens(parser: &str) -> Option<Vec<String>> {
+    // A.X-K3 has no v1 tool parser config to read its opener from.
+    if canonical_family(parser) == Some(AX_K3_UNIFIED_FAMILY) {
+        return Some(vec!["<tool_call>".to_string()]);
+    }
     let parser_key = if parser.is_empty() { "default" } else { parser };
     Some(
         dynamo_parsers::tool_calling::parsers::get_tool_parser_map()
@@ -1188,7 +1209,7 @@ fn unified_parser_control_markers(family: &str) -> Vec<String> {
 
 fn native_family_marker(family: &str) -> Option<&'static str> {
     match family {
-        "qwen3" | "glm47" => Some("<tool_call>"),
+        "qwen3" | "glm47" | "ax_k3" => Some("<tool_call>"),
         "deepseek_v4" => Some("<｜DSML｜tool_calls>"),
         "deepseek_v41" => Some("<｜DSML｜ calls>"),
         "gemma4" => Some("<|tool_call>"),
