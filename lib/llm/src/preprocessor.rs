@@ -940,11 +940,11 @@ struct ReasoningState {
     defer_reasoning_for_nonempty_content: bool,
     // Finalize each choice's parser on its terminal chunk even without the
     // deferral above, for parsers that retain undecided text until EOF
-    // (MiniMax M3), and at end of stream for a choice whose parser is still
+    // (MiniMax M3, Solar Open2), and at end of stream for a choice whose parser is still
     // unfinished: it sent no `finish_reason`, or its terminal chunk carried
     // content parts. Otherwise a turn whose output never shows a marker, such
     // as grammar-constrained output under an adaptive prompt, is dropped
-    // whole with the parser state. See `is_minimax_m3_reasoning_parser`.
+    // whole with the parser state. See `finalizes_reasoning_parser_at_finish`.
     finalize_parser_at_finish: bool,
     // Set once the backend has sent an error annotation. The end-of-stream
     // flush must not run after that: an error is terminal, and emitting
@@ -6076,7 +6076,8 @@ impl OpenAIPreprocessor {
         // chunk (see `finalize_parser_at_finish`), so its usage is held too.
         let stream: Pin<Box<dyn Stream<Item = _> + Send>> = if defer_reasoning_for_nonempty_content
             || should_strip_disabled_reasoning_start
-            || (should_parse_reasoning && Self::is_minimax_m3_reasoning_parser(reasoning_parser))
+            || (should_parse_reasoning
+                && Self::finalizes_reasoning_parser_at_finish(reasoning_parser))
         {
             Box::pin(Self::hold_usage_until_stream_end(stream))
         } else {
@@ -7383,6 +7384,14 @@ impl OpenAIPreprocessor {
         matches!(reasoning_parser, Some("minimax_m3" | "minimax-m3"))
     }
 
+    /// Reasoning parsers that release held text from `finish_reasoning_stream`:
+    /// MiniMax M3, and Solar Open2, which moves tool-call blocks written inside
+    /// the thought to content at the end of the stream.
+    fn finalizes_reasoning_parser_at_finish(reasoning_parser: Option<&str>) -> bool {
+        Self::is_minimax_m3_reasoning_parser(reasoning_parser)
+            || reasoning_parser == Some("solar_open2")
+    }
+
     fn skips_structured_response_when_prompt_injected(reasoning_parser: Option<&str>) -> bool {
         matches!(reasoning_parser, Some("qwen3" | "kimi_k3" | "kimi-k3"))
             || Self::skips_guided_json_when_prompt_injected(reasoning_parser)
@@ -7788,7 +7797,7 @@ impl OpenAIPreprocessor {
         // Parsers and bypass decisions are created lazily per `choice.index`
         // inside the unfold loop, so `n > 1` choices never share state.
         let finalize_parser_at_finish =
-            Self::is_minimax_m3_reasoning_parser(Some(parser_name.as_str()));
+            Self::finalizes_reasoning_parser_at_finish(Some(parser_name.as_str()));
         let state = ReasoningState {
             stream: Box::pin(stream),
             parser_name,

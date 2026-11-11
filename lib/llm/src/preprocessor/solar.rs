@@ -616,6 +616,56 @@ mod tests {
         }
     }
 
+    fn small_chunks(raw: &str) -> Vec<Annotated<NvCreateChatCompletionStreamResponse>> {
+        let chars: Vec<char> = raw.chars().collect();
+        let pieces: Vec<String> = chars.chunks(3).map(|c| c.iter().collect()).collect();
+        let last = pieces.len() - 1;
+        pieces
+            .iter()
+            .enumerate()
+            .map(|(i, piece)| chunk(Some(piece), (i == last).then_some("stop"), 0))
+            .collect()
+    }
+
+    /// Customer report: XML-style text while thinking ended the thought and
+    /// leaked the rest of it, and the answer, into content.
+    #[tokio::test]
+    async fn solar_literal_tool_call_text_in_thought_stays_reasoning() {
+        let thought =
+            "I could reply with <tool_call>{\"name\": \"x\"}</tool_call>, but no. More thinking.";
+        for choice in [json!("auto"), json!("none")] {
+            let out = run(
+                &request(None, choice.clone()),
+                small_chunks(&format!("{thought}<|think:end|>Final answer.")),
+            )
+            .await;
+            assert_eq!(text(&out, "reasoning_content"), thought, "{choice}");
+            assert_eq!(text(&out, "content"), "Final answer.", "{choice}");
+            assert!(calls(&out).is_empty(), "{choice}");
+        }
+    }
+
+    /// A complete call written inside the thought runs, after the real answer.
+    #[tokio::test]
+    async fn solar_call_inside_the_thought_runs_after_the_answer() {
+        let out = run(
+            &request(None, json!("auto")),
+            small_chunks(&format!("plan\n{NATIVE}\n<|think:end|>확인할게요.")),
+        )
+        .await;
+        assert_eq!(text(&out, "reasoning_content"), "plan");
+        assert_eq!(text(&out, "content").trim_end(), "확인할게요.");
+        let calls = calls(&out);
+        assert_eq!(calls.len(), 1, "{out:?}");
+        assert_eq!(calls[0]["function"]["name"], "search");
+        assert!(
+            out.iter()
+                .flat_map(|v| v["choices"].as_array().into_iter().flatten())
+                .any(|c| c["finish_reason"] == "tool_calls"),
+            "{out:?}"
+        );
+    }
+
     #[tokio::test]
     async fn solar_tool_escape_and_tool_choice_none() {
         let out = run(
@@ -623,7 +673,9 @@ mod tests {
             vec![chunk(Some(&format!("plan {NATIVE}")), Some("stop"), 0)],
         )
         .await;
-        assert_eq!(text(&out, "reasoning_content"), "plan ");
+        // The call written in the thought moves to content (reference: the
+        // remaining thought is stripped).
+        assert_eq!(text(&out, "reasoning_content"), "plan");
         assert_eq!(calls(&out).len(), 1);
         let out = run(
             &request(Some("low"), json!("none")),
