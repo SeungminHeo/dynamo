@@ -26,8 +26,17 @@ native guided-decoding gate.
 - Missing effort defaults to high; medium/high start in reasoning. Other efforts
   (including low/none) return content directly. `enable_thinking` does not
   override the Solar template. A top-level effort overrides template kwargs.
-- `<|think:start|>` / `<|think:end|>` split reasoning from content. Native tool
-  calls can also close reasoning when the think-end marker is absent.
+- Reasoning follows UpstageAI/vllm's public `solar_open2_reasoning_parser.py`
+  (tag `v0.22.0-solar-open2`), ported as `SolarOpen2ReasoningParser` in the
+  parser fork. Only `<|think:end|>` ends the thought; everything after it is
+  content. Text written while thinking, such as `<tool_call>` or
+  `<|tool_call:start|>`, stays reasoning.
+  - A complete tool-call block written inside the thought moves to content
+    after the answer, so it still runs. The stream holds the thought from its
+    first `<|tool_call:start|>` until `<|think:end|>`, and the frontend
+    finalizes the parser at the end of the stream to deliver moved blocks.
+  - A thought cut off before `<|think:end|>` stays reasoning. The reference's
+    non-streaming path returns it as content.
 - Special tokens survive detokenization so the parser can see its delimiters.
 - Native tool arguments are schema-typed, with string fallback on failed conversion.
 - Engine `finish_reason: "repetition"` is accepted and preserved in chat/text
