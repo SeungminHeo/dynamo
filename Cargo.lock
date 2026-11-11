@@ -2974,11 +2974,10 @@ dependencies = [
 [[package]]
 name = "dynamo-parsers-v2"
 version = "0.9.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39a2994e0e7238971e992f71da0860165557a5a1e2318d61558190bed49e51ed"
+source = "git+https://github.com/SeungminHeo/frontend-crates.git?rev=c4b25515552cbb485d2b6158cbfa7b1d1ff68c35#c4b25515552cbb485d2b6158cbfa7b1d1ff68c35"
 dependencies = [
  "anyhow",
- "dynamo-structural-tag 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dynamo-structural-tag 0.1.0 (git+https://github.com/SeungminHeo/frontend-crates.git?rev=c4b25515552cbb485d2b6158cbfa7b1d1ff68c35)",
  "openai-harmony",
  "percent-encoding",
  "regex",
@@ -3284,8 +3283,7 @@ dependencies = [
 [[package]]
 name = "dynamo-structural-tag"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8d57353db2c855b6d8154bb67b752d95547ee33eda3ee55342c0625211bdaae"
+source = "git+https://github.com/SeungminHeo/frontend-crates.git?rev=c4b25515552cbb485d2b6158cbfa7b1d1ff68c35#c4b25515552cbb485d2b6158cbfa7b1d1ff68c35"
 dependencies = [
  "anyhow",
  "regex",
