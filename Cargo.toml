@@ -243,6 +243,8 @@ strip = false
 aisim-core = { git = "https://github.com/ai-dynamo/aisimulate.git", rev = "a420a6d8b26c767b250a145136f8732d75925069" }
 dynamo-parsers = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "dc397c2236ec16ad2cebf004ea1176c927f88ff7" }
 dynamo-protocols = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "dc397c2236ec16ad2cebf004ea1176c927f88ff7" }
+# A.X-K3 `ax_k3` unified parser (personal fork branch ax-k3-unified-0.10.2, based on dynamo-parsers-v2 0.10.2).
+dynamo-parsers-v2 = { git = "https://github.com/SeungminHeo/frontend-crates.git", rev = "6f8848249e721d1ebcd5bfbfb523fec7e26531a6" }
 
 # Publication uses the indexed RC matching the normal Git source pin above.
 [workspace.metadata.artifactory.dependencies.aisim-core]
