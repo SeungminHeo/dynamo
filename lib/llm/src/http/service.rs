@@ -214,10 +214,11 @@ mod tests {
                     let result = apply_request_tool_call_parsing_options(options, &req).unwrap();
                     assert_eq!(
                         result.reasoning_disabled,
-                        if family == "gemma4" {
-                            thinking != Some(true)
-                        } else {
-                            thinking == Some(false)
+                        match family {
+                            "gemma4" => thinking != Some(true),
+                            // A.X-K3's template always opens a thought.
+                            "ax_k3" => false,
+                            _ => thinking == Some(false),
                         },
                         "{selector} {tool:?} {reasoning:?} {thinking:?}"
                     );
