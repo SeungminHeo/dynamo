@@ -6,20 +6,20 @@ SPDX-License-Identifier: Apache-2.0
 # A.X-K3 `ax_k3` downstream maintenance
 
 Internal-only: not intended for upstream. This branch is Dynamo
-`release/1.6.2` plus the Axiom changes and `ax_k3`. The parser lives in the personal frontend-crates
+`release/1.6.1` plus the Axiom changes and `ax_k3`. The parser lives in the personal frontend-crates
 fork, branch `ax-k3-unified-0.7.24` (based on tag `dynamo-parsers-v2-v0.7.24`,
-the version 1.6.2 pins; a port of the 0.9.6 branch `ax-k3-unified-0.9.6` used by
+the version 1.6.1 and 1.6.2 pin; a port of the 0.9.6 branch `ax-k3-unified-0.9.6` used by
 `axiom/test-ax-k3-flash`). It is pinned by commit as a `dynamo-parsers-v2`
 patch in both Cargo roots (`Cargo.toml` and `lib/bindings/python/Cargo.toml`)
 and both lockfiles. The branch also carries the Axiom Solar Open2 changes
-from `axiom/release/1.6.1` (see `SOLAR_OPEN2.md`).
+(see `SOLAR_OPEN2.md`).
 
 ## Configuration
 
 Rust frontend with `--dyn-chat-processor dynamo`, and either
 `--dyn-tool-call-parser ax_k3 --dyn-reasoning-parser ax_k3` or
 `--dyn-tool-call-parser ax_k3 --dyn-reasoning-parser deepseek_r1` (the same
-unified family). Aliases: `axk3`, `ax-k3`. On 1.6.2 the default
+unified family). Aliases: `axk3`, `ax-k3`. On 1.6.x the default
 `DYN_PARSER_VERSION` (auto) selects `ax_k3`, like DeepSeek V4.1; `2` also works.
 `ax_k3` is a v2 unified family, so `DYN_PARSER_VERSION=1` is not supported.
 
@@ -71,4 +71,4 @@ The `Axiom runtime wheel (personal fork)` workflow builds the runtime wheel by
 `workflow_dispatch` on this branch. It checks that `ax_k3` is registered and
 records the parser-v2 pin in `build-info.json`.
 
-This branch builds a 1.6.2 wheel. Install it only into a 1.6.2 image.
+This branch builds a 1.6.1 wheel. Install it only into a 1.6.1 image.
