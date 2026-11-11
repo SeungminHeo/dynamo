@@ -6952,6 +6952,9 @@ impl OpenAIPreprocessor {
                     let prompt_injected_reasoning = *prompt_injected_reasoning;
                     let bypass_bare_guided_json = *bypass_bare_guided_json;
                     let defer_reasoning = *defer_reasoning_for_nonempty_content;
+                    // Solar Open2 moves tool-call blocks written inside the
+                    // thought to content when its parser finishes.
+                    let finish_at_terminal = parser_name == "solar_open2";
 
                     response.map_data(|mut data| {
                         for choice in data.inner.choices.iter_mut() {
@@ -7118,6 +7121,37 @@ impl OpenAIPreprocessor {
                                     choice.delta.reasoning_content = Some(
                                         choice.delta.reasoning_content.take().unwrap_or_default()
                                             + &reasoning,
+                                    );
+                                }
+                            }
+
+                            // Without the deferral, finish a parser that releases
+                            // text at the end (Solar Open2) on this terminal delta,
+                            // so the text reaches the tool parser with it.
+                            if !defer_reasoning
+                                && finish_at_terminal
+                                && choice.finish_reason.is_some()
+                                && !terminal_carries_parts
+                                && bypass_decision == Some(false)
+                                && !choice_state.drained
+                            {
+                                choice_state.drained = true;
+                                let result = choice_state.parser.finish_reasoning_stream();
+                                if !result.normal_text.is_empty() {
+                                    let content = match choice.delta.content.take() {
+                                        Some(ChatCompletionMessageContent::Text(existing)) => {
+                                            existing + &result.normal_text
+                                        }
+                                        // `None`; parts were excluded above.
+                                        _ => result.normal_text,
+                                    };
+                                    choice.delta.content =
+                                        Some(ChatCompletionMessageContent::Text(content));
+                                }
+                                if !result.reasoning_text.is_empty() {
+                                    choice.delta.reasoning_content = Some(
+                                        choice.delta.reasoning_content.take().unwrap_or_default()
+                                            + &result.reasoning_text,
                                     );
                                 }
                             }

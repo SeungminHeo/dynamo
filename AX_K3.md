@@ -6,12 +6,13 @@ SPDX-License-Identifier: Apache-2.0
 # A.X-K3 `ax_k3` downstream maintenance
 
 Internal-only: not intended for upstream. This branch is Dynamo
-`release/1.6.2` plus `ax_k3`. The parser lives in the personal frontend-crates
+`release/1.6.2` plus the Axiom changes and `ax_k3`. The parser lives in the personal frontend-crates
 fork, branch `ax-k3-unified-0.7.24` (based on tag `dynamo-parsers-v2-v0.7.24`,
 the version 1.6.2 pins; a port of the 0.9.6 branch `ax-k3-unified-0.9.6` used by
 `axiom/test-ax-k3-flash`). It is pinned by commit as a `dynamo-parsers-v2`
 patch in both Cargo roots (`Cargo.toml` and `lib/bindings/python/Cargo.toml`)
-and both lockfiles. This branch carries no Solar Open2 changes.
+and both lockfiles. The branch also carries the Axiom Solar Open2 changes
+from `axiom/release/1.6.1` (see `SOLAR_OPEN2.md`).
 
 ## Configuration
 
