@@ -42,6 +42,7 @@ clients migrate. Tracked in personal-fork issue #4.
 ## Pinned sources
 
 - Dynamo release branch: `axiom/release/1.6.1`
+- Dynamo 1.7.0 release branch: `axiom/release/1.7.0` (parser/protocol `e61ce1b13161c46e3d698d847d591b0edf1c684e`, parsers-v2 `6f8848249e721d1ebcd5bfbfb523fec7e26531a6`)
 - Release parser/protocol source: `8870bba39bd875abaf266c3e02ac8cd1385ad4af`
 - Dynamo `axiom/main` parser/protocol source: `dc397c2236ec16ad2cebf004ea1176c927f88ff7`
 - Parser repository: https://github.com/SeungminHeo/frontend-crates

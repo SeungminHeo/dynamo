@@ -6,8 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 # A.X-K3 `ax_k3` downstream maintenance
 
 Internal-only: not intended for upstream. The parser lives in the personal
-frontend-crates fork, branch `ax-k3-unified-0.9.6` (based on tag
-`dynamo-parsers-v2-v0.9.6`). It is pinned by commit as a `dynamo-parsers-v2`
+frontend-crates fork. On `axiom/release/1.7.0` the pin is branch
+`ax-k3-unified-0.10.2` (commit `6f884824`, based on tag `dynamo-parsers-v2-v0.10.2`,
+which `release/1.7.0` pins); `axiom/main` still pins `ax-k3-unified-0.9.6`. It is pinned by commit as a `dynamo-parsers-v2`
 patch in both Cargo roots (`Cargo.toml` and `lib/bindings/python/Cargo.toml`)
 and both lockfiles.
 
@@ -67,5 +68,6 @@ The `Axiom runtime wheel (personal fork)` workflow builds the runtime wheel by
 `workflow_dispatch` on this branch. It checks that `ax_k3` is registered and
 records the parser-v2 pin in `build-info.json`.
 
-This branch follows `axiom/main` (1.7.0). Do not install its wheel into a 1.6.1
-image.
+`axiom/release/1.7.0` builds a 1.7.0 wheel (a push to that branch starts the
+workflow). Install it only into an image whose `ai-dynamo` Python package is
+1.7.0; never into a 1.6.x image.

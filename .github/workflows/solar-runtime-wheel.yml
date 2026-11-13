@@ -3,7 +3,7 @@
 name: Axiom runtime wheel (personal fork)
 on:
   push:
-    branches: [axiom/release/1.6.1]
+    branches: [axiom/release/1.6.1, axiom/release/1.7.0]
   workflow_dispatch:
 permissions:
   contents: read
