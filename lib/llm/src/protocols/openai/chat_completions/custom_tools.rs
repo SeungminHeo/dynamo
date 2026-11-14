@@ -175,7 +175,11 @@ impl ChatCustomToolAdapter {
                             Err(_)
                                 if matches!(
                                     choice.finish_reason,
-                                    Some(FinishReason::Length | FinishReason::ContentFilter)
+                                    Some(
+                                        FinishReason::Length
+                                            | FinishReason::Repetition
+                                            | FinishReason::ContentFilter
+                                    )
                                 ) && serde_json::from_str::<serde_json::Value>(&arguments)
                                     .is_err() =>
                             {

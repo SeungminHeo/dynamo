@@ -403,6 +403,13 @@ pub mod llm {
     /// value is read and cached on first use.
     pub const DYN_HTTP_OVERLOAD_STATUS_CODE: &str = "DYN_HTTP_OVERLOAD_STATUS_CODE";
 
+    /// Frontend repetition stop rule (Axiom downstream): one JSON rule object
+    /// `{"min_pattern_size": N, "max_pattern_size": M, "min_count": C}` or an array of
+    /// them. A choice whose generated token IDs end in a pattern of length N..=M repeated
+    /// C times stops with finish reason `repetition`. Unset, empty, or invalid disables it.
+    /// Read once per frontend process.
+    pub const DYN_REPETITION_DETECTION: &str = "DYN_REPETITION_DETECTION";
+
     /// Emit an SSE comment at this interval while a streaming response has no
     /// data. Unset, `0`, invalid, or unrepresentable values keep SSE comments
     /// disabled.
@@ -1227,6 +1234,7 @@ mod tests {
             llm::DYN_HTTP_GRACEFUL_SHUTDOWN_TIMEOUT_SECS,
             llm::DYN_HTTP_WRITE_IDLE_TIMEOUT_SECS,
             llm::DYN_HTTP_OVERLOAD_STATUS_CODE,
+            llm::DYN_REPETITION_DETECTION,
             llm::DYN_HTTP_BACKEND_STREAM_TIMEOUT_SECS,
             llm::DYN_HTTP_PRE_COMMIT_ERROR_PEEK_MS,
             llm::DYN_LORA_ENABLED,

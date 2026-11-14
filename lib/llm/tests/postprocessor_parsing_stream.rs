@@ -6903,6 +6903,7 @@ async fn backend_arguments_survive_postprocessing_and_aggregation(include_defaul
             Some(FinishReason::Stop),
             Some(FinishReason::ToolCalls),
             Some(FinishReason::Length),
+            Some(FinishReason::Repetition),
             Some(FinishReason::ContentFilter),
         ] {
             for arguments in [r#"{"location":"SF"}"#, r#"{"location":"SF""#, ""] {
@@ -6992,7 +6993,12 @@ async fn backend_arguments_survive_postprocessing_and_aggregation(include_defaul
                         .await
                         .unwrap();
                         let choice = &response.inner.choices[0];
-                        let retained = finish != Some(FinishReason::Length)
+                        // A repetition stop truncates like the token limit.
+                        let truncated = matches!(
+                            finish,
+                            Some(FinishReason::Length | FinishReason::Repetition)
+                        );
+                        let retained = !truncated
                             || serde_json::from_str::<serde_json::Value>(arguments).is_ok();
                         assert_eq!(
                             choice.message.tool_calls.is_some(),
@@ -7008,13 +7014,14 @@ async fn backend_arguments_survive_postprocessing_and_aggregation(include_defaul
                                 choice.finish_reason,
                                 Some(match finish {
                                     Some(FinishReason::Length) => FinishReason::Length,
+                                    Some(FinishReason::Repetition) => FinishReason::Repetition,
                                     Some(FinishReason::ContentFilter) =>
                                         FinishReason::ContentFilter,
                                     _ => FinishReason::ToolCalls,
                                 })
                             );
                         } else {
-                            assert_eq!(choice.finish_reason, Some(FinishReason::Length));
+                            assert_eq!(choice.finish_reason, finish);
                         }
                         assert_eq!(
                             match &choice.message.content {
