@@ -56,11 +56,16 @@ pub type ExecutionOutputStream = Annotated<LLMEngineOutput>;
 /// Context for executing LLM inference, engine consumes backend input and produces execution output stream
 pub type ExecutionContext = ServerStreamingEngine<PreprocessedRequest, ExecutionOutputStream>;
 
+pub mod repetition;
+use repetition::{RepetitionConfig, RepetitionDetector};
+
 /// Backend handles resource management and orchestrates LLM execution
 #[allow(dead_code)]
 pub struct Backend {
     pub tokenizer: Option<Tokenizer>, // Handles token encoding/decoding
     validate_engine_decode: bool,     // Enable validation of engine decoding
+    // Frontend repetition stop rule, from `DYN_REPETITION_DETECTION` unless injected.
+    repetition: Option<Arc<RepetitionConfig>>,
 }
 
 /// Internal state for managing token decoding and stream processing
@@ -146,6 +151,8 @@ struct DecoderParams {
     // this Backend emits can ever be reseeded into a retry, so there is no point snapshotting
     // the decoder's withheld state onto every chunk via `jailed_text`.
     migration_possible: bool,
+    // Frontend repetition stop rule (`DYN_REPETITION_DETECTION`); `None` disables it.
+    repetition: Option<Arc<RepetitionConfig>>,
 }
 
 impl DecoderParams {
@@ -168,15 +175,26 @@ impl DecoderParams {
             n: request.sampling_options.n.unwrap_or(1) as u32,
             jail_seed: request.jail_seed.clone(),
             migration_possible: request.migration_state.is_some(),
+            repetition: None,
         }
     }
 }
 
 impl Backend {
     pub fn from_tokenizer(tokenizer: Tokenizer) -> Arc<Self> {
+        Self::from_tokenizer_with_repetition(tokenizer, repetition::configured())
+    }
+
+    /// Like [`Self::from_tokenizer`], with an explicit repetition rule instead of the
+    /// process-wide `DYN_REPETITION_DETECTION` value.
+    pub fn from_tokenizer_with_repetition(
+        tokenizer: Tokenizer,
+        repetition: Option<Arc<RepetitionConfig>>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             tokenizer: Some(tokenizer),
             validate_engine_decode: false,
+            repetition,
         })
     }
 
@@ -188,6 +206,7 @@ impl Backend {
                 Arc::new(Self {
                     tokenizer: None,
                     validate_engine_decode: false,
+                    repetition: None,
                 })
             }
         }
@@ -241,7 +260,8 @@ impl
         request: SingleIn<PreprocessedRequest>,
         next: ServerStreamingEngine<PreprocessedRequest, Annotated<LLMEngineOutput>>,
     ) -> Result<ManyOut<Annotated<BackendOutput>>> {
-        let decoder_params = DecoderParams::from_request(&request);
+        let mut decoder_params = DecoderParams::from_request(&request);
+        decoder_params.repetition = self.repetition.clone();
 
         let next_stream = next.generate(request).await?;
 
@@ -717,6 +737,9 @@ pub struct Decoder {
     // token, for the lifetime of the request) instead of allocating fresh ones every step.
     kmp_scratch: Vec<u8>,
     kmp_pi_scratch: Vec<usize>,
+
+    // Frontend repetition detector, set only by `new_with_checkpoint`.
+    repetition: Option<RepetitionDetector>,
 }
 
 #[allow(dead_code)]
@@ -728,6 +751,8 @@ pub enum StopTrigger {
     VisibleStopTokenDetected(TokenIdType),
     HiddenStopSequenceDetected(String),
     VisibleStopSequenceDetected(String),
+    /// The generated token IDs end in a configured repeated N-gram.
+    RepetitionDetected,
 }
 
 impl StopTrigger {
@@ -741,6 +766,7 @@ impl StopTrigger {
             Self::HiddenStopSequenceDetected(text) | Self::VisibleStopSequenceDetected(text) => {
                 (FinishReason::Stop, Some(StopReason::String(text.clone())))
             }
+            Self::RepetitionDetected => (FinishReason::Repetition, None),
         }
     }
 }
@@ -864,7 +890,7 @@ impl Decoder {
             }
         }
 
-        Ok(Self::from_state(
+        let mut decoder = Self::from_state(
             Some(tokenizer),
             decode_stream,
             params.skip_special_tokens,
@@ -874,7 +900,10 @@ impl Decoder {
             params.tracker.clone(),
             jail,
             pending_token_ids,
-        ))
+        );
+        // A migrated attempt restarts detection from its own generated tokens.
+        decoder.repetition = params.repetition.clone().map(RepetitionDetector::new);
+        Ok(decoder)
     }
 
     /// Builds decoder state after its incremental stream and migration state are ready.
@@ -953,6 +982,7 @@ impl Decoder {
             jailed_bytes,
             kmp_scratch: Vec::new(),
             kmp_pi_scratch: Vec::new(),
+            repetition: None,
         }
     }
 
@@ -966,6 +996,13 @@ impl Decoder {
         let below_min_tokens = self.generated_tokens < self.min_tokens;
         // increment the generated tokens
         self.generated_tokens += 1;
+        // Every generated token feeds the detector; like other stop conditions it only
+        // stops the choice once `min_tokens` have been generated.
+        let repetition_stop = self
+            .repetition
+            .as_mut()
+            .is_some_and(|detector| detector.observe(token_id))
+            && !below_min_tokens;
 
         // Finalize older text before dropping a hidden stop token.
         if !below_min_tokens
@@ -1014,7 +1051,10 @@ impl Decoder {
             return Ok(StepResult::ok_split(selected_token, decoded_text));
         }
 
-        if self.visible_stop_ids.contains(&token_id) || self.hidden_stop_ids.contains(&token_id) {
+        if self.visible_stop_ids.contains(&token_id)
+            || self.hidden_stop_ids.contains(&token_id)
+            || repetition_stop
+        {
             let tail = self.decode_stream.finish()?;
             self.pending_token_ids.clear();
             if let Some(tail) = tail {
@@ -1074,6 +1114,17 @@ impl Decoder {
                 decoded.released_text,
                 trigger,
             ));
+        }
+
+        // Checked last: an explicit stop on the same token keeps its own reason.
+        if repetition_stop {
+            if let Some(flushed) = self.flush_jailed() {
+                decoded
+                    .released_text
+                    .get_or_insert_default()
+                    .push_str(&flushed);
+            }
+            decoded.stop_trigger = Some(StopTrigger::RepetitionDetected);
         }
 
         Ok(decoded)
@@ -2644,6 +2695,132 @@ mod tests {
             finishes,
             vec![FinishReason::Error("worker failed".to_string())],
             "the worker's error must survive a local EOS stop in the same chunk: {outputs:?}"
+        );
+    }
+
+    fn tinyllama_tokenizer() -> (tokenizers::Tokenizer, Tokenizer) {
+        let hf = tokenizers::Tokenizer::from_file(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/data/sample-models/TinyLlama_v1.1/tokenizer.json"
+        ))
+        .unwrap();
+        let tokenizer: Arc<dyn traits::Tokenizer> = Arc::new(
+            crate::tokenizers::HuggingFaceTokenizer::from_tokenizer(hf.clone()),
+        );
+        (hf, Tokenizer::from(tokenizer))
+    }
+
+    fn repetition_rule(min: usize, max: usize, count: usize) -> Arc<RepetitionConfig> {
+        Arc::new(
+            RepetitionConfig::new(vec![repetition::RepetitionRule {
+                min_pattern_size: min,
+                max_pattern_size: max,
+                min_count: count,
+            }])
+            .unwrap(),
+        )
+    }
+
+    /// Streams `count` single-token chunks cycling through a 3-token phrase.
+    async fn run_repeating_phrase(
+        repetition: Option<Arc<RepetitionConfig>>,
+        stop_conditions: StopConditions,
+        count: usize,
+    ) -> (Vec<BackendOutput>, bool, Vec<TokenIdType>) {
+        let (_, tokenizer) = tinyllama_tokenizer();
+        let backend = Backend::from_tokenizer_with_repetition(tokenizer, repetition);
+        let request = PreprocessedRequest::builder()
+            .model("test-model".to_string())
+            .token_ids(vec![1])
+            .stop_conditions(stop_conditions)
+            .sampling_options(SamplingOptions::default())
+            .output_options(OutputOptions::default())
+            .build()
+            .unwrap();
+        let phrase: Vec<TokenIdType> = vec![450, 4996, 17354];
+        let token_ids: Vec<TokenIdType> = phrase.iter().copied().cycle().take(count).collect();
+        let engine: ServerStreamingEngine<PreprocessedRequest, Annotated<LLMEngineOutput>> =
+            Arc::new(SyntheticSglangStopEngine {
+                outputs: Some(
+                    token_ids
+                        .iter()
+                        .map(|&token_id| LLMEngineOutput {
+                            token_ids: vec![token_id],
+                            ..Default::default()
+                        })
+                        .collect(),
+                ),
+            });
+        let stream = Operator::generate(backend.as_ref(), SingleIn::new(request), engine)
+            .await
+            .unwrap();
+        let context = stream.context();
+        let outputs: Vec<BackendOutput> = stream
+            .filter_map(|item| async move { item.data })
+            .collect()
+            .await;
+        (outputs, context.is_stopped(), token_ids)
+    }
+
+    #[tokio::test]
+    async fn repetition_stop_ends_the_choice_and_stops_the_engine() {
+        let (outputs, stopped, token_ids) = run_repeating_phrase(
+            Some(repetition_rule(3, 3, 3)),
+            StopConditions::default(),
+            30,
+        )
+        .await;
+
+        // The phrase is out three times after nine tokens; nothing after it is emitted.
+        assert_eq!(outputs.len(), 9, "{outputs:?}");
+        assert!(
+            outputs[..8]
+                .iter()
+                .all(|output| output.finish_reason.is_none())
+        );
+        assert_eq!(outputs[8].finish_reason, Some(FinishReason::Repetition));
+        assert_eq!(outputs[8].stop_reason, None);
+        assert!(
+            stopped,
+            "a local repetition stop must stop the upstream engine request"
+        );
+
+        // The stopping token's text is kept and nothing earlier is lost.
+        let (hf, _) = tinyllama_tokenizer();
+        let text: String = outputs
+            .iter()
+            .filter_map(|output| output.text.clone())
+            .collect();
+        assert_eq!(text, hf.decode(&token_ids[..9], true).unwrap());
+    }
+
+    #[tokio::test]
+    async fn repetition_stop_waits_for_min_tokens() {
+        let (outputs, stopped, _) = run_repeating_phrase(
+            Some(repetition_rule(3, 3, 3)),
+            StopConditions {
+                min_tokens: Some(12),
+                ..Default::default()
+            },
+            30,
+        )
+        .await;
+
+        // Same gate as the other stop conditions: the 13th token is the first eligible one.
+        assert_eq!(outputs.len(), 13, "{outputs:?}");
+        assert_eq!(outputs[12].finish_reason, Some(FinishReason::Repetition));
+        assert!(stopped);
+    }
+
+    #[tokio::test]
+    async fn repetition_detection_is_off_without_a_rule() {
+        let (outputs, _, _) = run_repeating_phrase(None, StopConditions::default(), 30).await;
+
+        assert_eq!(outputs.len(), 30);
+        assert!(
+            outputs
+                .iter()
+                .all(|output| output.finish_reason != Some(FinishReason::Repetition))
         );
     }
 }
