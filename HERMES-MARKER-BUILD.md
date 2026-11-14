@@ -53,8 +53,14 @@ reuse the earlier Solar wheel: that wheel does not contain this policy.
 ## Linux wheel via GitHub Actions
 
 The personal-fork-only `solar-runtime-wheel.yml` builds on manylinux_2_28 x86_64
-with Rust 1.96.1 and the CI runtime features. A push to the release branch starts
-it automatically. Manual build (also supported on `axiom/main`):
+with Rust 1.96.1 and the CI runtime features. A push to `axiom/release/1.6.1`,
+`axiom/release/1.6.2`, or `axiom/release/1.7.0` starts it automatically, and its
+`publish` job then creates the `axiom-runtime-<version>-<commit12>` GitHub release
+(wheel, `axiom-runtime.requirements.txt`, `build-info.json`, `SHA256SUMS`). It never
+replaces an existing release and never moves "Latest", which stays on the production
+release and is changed by hand. A head commit marked `[skip ci]` builds nothing. A
+manual run publishes only with `-f publish=true`. Manual build (also supported on
+`axiom/main`):
 
 ```sh
 gh workflow run solar-runtime-wheel.yml --repo SeungminHeo/dynamo --ref axiom/release/1.6.1
