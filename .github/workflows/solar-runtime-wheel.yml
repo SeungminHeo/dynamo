@@ -3,8 +3,13 @@
 name: Axiom runtime wheel (personal fork)
 on:
   push:
-    branches: [axiom/release/1.6.1, axiom/release/1.6.2]
+    branches: [axiom/release/1.6.1, axiom/release/1.6.2, axiom/release/1.7.0]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the built wheel as an axiom-runtime GitHub release
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -89,3 +94,57 @@ jobs:
           name: axiom-runtime-linux-x86_64-${{ github.sha }}
           path: dist/*
           if-no-files-found: error
+  publish:
+    # Release-branch pushes publish automatically; a manual run publishes only when asked.
+    needs: wheel
+    if: github.repository == 'SeungminHeo/dynamo' && (github.event_name == 'push' || inputs.publish)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131  # v7.0.0
+        with:
+          name: axiom-runtime-linux-x86_64-${{ github.sha }}
+          path: dist
+      - name: Publish axiom-runtime release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          cd dist
+          wheel=$(ls ai_dynamo_runtime-*.whl)
+          version=$(unzip -p "$wheel" '*.dist-info/METADATA' | sed -n 's/^Version: //p')
+          short="${SOURCE_SHA:0:12}"
+          tag="axiom-runtime-${version}-${short}"
+          # Published tags and wheel hashes are immutable: never replace an existing release.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists; leaving it unchanged"
+            exit 0
+          fi
+          grep -q "\"dynamo_commit\": \"${SOURCE_SHA}\"" build-info.json
+          hash=$(sha256sum "$wheel" | cut -d' ' -f1)
+          echo "ai-dynamo-runtime @ https://github.com/${GH_REPO}/releases/download/${tag}/${wheel} --hash=sha256:${hash}" > axiom-runtime.requirements.txt
+          sha256sum "$wheel" build-info.json axiom-runtime.requirements.txt > SHA256SUMS
+          subject=$(gh api "repos/${GH_REPO}/commits/${SOURCE_SHA}" --jq '.commit.message' | head -n1)
+          cat > notes.md <<EOF
+          Axiom downstream runtime for Dynamo ${version}, built from \`${SOURCE_REF}\`. Source: \`${SOURCE_SHA}\`.
+
+          Head commit: ${subject}
+
+          Carries the Axiom patch stack on that branch (Solar Open2, A.X-K3 \`ax_k3\`, the Hermes marker policy, frontend repetition stop, and the rest); see SOLAR_OPEN2.md, AX_K3.md, HERMES-MARKER-BUILD.md, and REPETITION_DETECTION.md on the source commit. Linux x86_64, built with Python 3.12; the abi3 wheel is compatible with Python 3.12.
+
+          Install this exact wheel after ai-dynamo==${version}, preserving the engine packages. Verify SHA256SUMS first. Package version alone does not identify this custom build.
+
+          Build and CPU import/registration check: ${RUN_URL}. GPU validation is not included.
+          EOF
+          # Never move "Latest": it marks the production line and is changed by hand.
+          gh release create "$tag" --target "$SOURCE_SHA" --latest=false \
+            --title "axiom-runtime ${version}: ${subject} (${short})" \
+            --notes-file notes.md \
+            "$wheel" build-info.json axiom-runtime.requirements.txt SHA256SUMS
