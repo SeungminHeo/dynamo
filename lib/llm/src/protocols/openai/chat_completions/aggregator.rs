@@ -213,6 +213,19 @@ fn suppress_tool_call_output(choice: &mut DeltaChoice) {
     }
 }
 
+/// Finishes that cut the output mid-generation. A repetition stop (engine- or
+/// frontend-detected, Axiom downstream) truncates exactly like the token limit, so it
+/// gets the same incomplete-call and incomplete-structure guards.
+fn is_truncating_finish(finish_reason: Option<dynamo_protocols::types::FinishReason>) -> bool {
+    matches!(
+        finish_reason,
+        Some(
+            dynamo_protocols::types::FinishReason::Length
+                | dynamo_protocols::types::FinishReason::Repetition
+        )
+    )
+}
+
 /// A token-limit finish can interrupt any call that the upstream emitted as provisional.
 /// Unified calls require complete JSON at every position. Legacy backend output
 /// retains its existing final-call-only truncation check.
@@ -222,7 +235,7 @@ fn suppress_tool_call_output(choice: &mut DeltaChoice) {
 /// permit omitted arguments, but nothing here can tell that apart from a call cut short,
 /// so at the token limit it is dropped with every other unparseable tail.
 fn drop_incomplete_length_tool_calls(choice: &mut DeltaChoice, unified: bool) {
-    if choice.finish_reason != Some(dynamo_protocols::types::FinishReason::Length) {
+    if !is_truncating_finish(choice.finish_reason) {
         return;
     }
 
@@ -297,9 +310,7 @@ fn suppress_incomplete_structured_content(
     parser: &str,
     constraint: &crate::protocols::openai::GuidedToolConstraint,
 ) {
-    if choice.finish_reason != Some(dynamo_protocols::types::FinishReason::Length)
-        || choice.text.is_empty()
-    {
+    if !is_truncating_finish(choice.finish_reason) || choice.text.is_empty() {
         return;
     }
 
@@ -873,9 +884,7 @@ impl DeltaAggregator {
                     || is_kimi_k3_parser(parser)
                 {
                     choice.text = content.unwrap_or_default();
-                } else if choice.finish_reason
-                    == Some(dynamo_protocols::types::FinishReason::Length)
-                {
+                } else if is_truncating_finish(choice.finish_reason) {
                     suppress_incomplete_structured_content(
                         choice,
                         parser,
@@ -2316,6 +2325,7 @@ mod tests {
                 Some(FinishReason::Stop),
                 Some(FinishReason::ToolCalls),
                 Some(FinishReason::Length),
+                Some(FinishReason::Repetition),
                 Some(FinishReason::ContentFilter),
             ] {
                 for split in (0..=raw.len()).filter(|split| raw.is_char_boundary(*split)) {
@@ -2355,6 +2365,7 @@ mod tests {
                         choice.finish_reason,
                         Some(match finish {
                             Some(FinishReason::Length) => FinishReason::Length,
+                            Some(FinishReason::Repetition) => FinishReason::Repetition,
                             Some(FinishReason::ContentFilter) => FinishReason::ContentFilter,
                             _ => FinishReason::ToolCalls,
                         })
@@ -2449,6 +2460,7 @@ mod tests {
                 Some(FinishReason::Stop),
                 Some(FinishReason::ToolCalls),
                 Some(FinishReason::Length),
+                Some(FinishReason::Repetition),
                 Some(FinishReason::ContentFilter),
             ] {
                 for args in [r#"{"city":"Paris"}"#, r#"{"city":"Paris""#, ""] {
@@ -2498,7 +2510,11 @@ mod tests {
                     let retained = if unified {
                         valid || (finish == Some(FinishReason::ToolCalls) && args.is_empty())
                     } else {
-                        finish != Some(FinishReason::Length) || valid
+                        // A repetition stop truncates like the token limit.
+                        !matches!(
+                            finish,
+                            Some(FinishReason::Length | FinishReason::Repetition)
+                        ) || valid
                     };
                     assert_eq!(
                         choice.message.tool_calls.is_some(),

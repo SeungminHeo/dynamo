@@ -6906,6 +6906,7 @@ async fn backend_arguments_survive_postprocessing_and_aggregation(include_defaul
             Some(FinishReason::Stop),
             Some(FinishReason::ToolCalls),
             Some(FinishReason::Length),
+            Some(FinishReason::Repetition),
             Some(FinishReason::ContentFilter),
         ] {
             for arguments in [r#"{"location":"SF"}"#, r#"{"location":"SF""#, ""] {
@@ -6915,6 +6916,7 @@ async fn backend_arguments_survive_postprocessing_and_aggregation(include_defaul
                     valid_json || (arguments.is_empty() && finish == Some(FinishReason::ToolCalls));
                 let expected_finish = match finish {
                     Some(FinishReason::Length) => FinishReason::Length,
+                    Some(FinishReason::Repetition) => FinishReason::Repetition,
                     Some(FinishReason::ContentFilter) => FinishReason::ContentFilter,
                     _ if requires_complete_call && !complete => FinishReason::Length,
                     _ => FinishReason::ToolCalls,
@@ -7006,7 +7008,11 @@ async fn backend_arguments_survive_postprocessing_and_aggregation(include_defaul
                         .await
                         .unwrap();
                         let choice = &response.inner.choices[0];
-                        let retained = expected_finish != FinishReason::Length || valid_json;
+                        // A repetition stop truncates like the token limit.
+                        let retained = !matches!(
+                            expected_finish,
+                            FinishReason::Length | FinishReason::Repetition
+                        ) || valid_json;
                         assert_eq!(
                             choice.message.tool_calls.is_some(),
                             retained,
