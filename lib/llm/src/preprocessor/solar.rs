@@ -1742,6 +1742,12 @@ mod tests {
             });
             let mut request = typed_request();
             request.inner.stream = Some(true);
+            request.nvext = Some(
+                crate::protocols::common::extensions::NvExt::builder()
+                    .extra_fields(vec!["detailed_finish_reason".to_string()])
+                    .build()
+                    .unwrap(),
+            );
             let stream = Operator::generate(preprocessor.as_ref(), SingleIn::new(request), link)
                 .await
                 .unwrap();
@@ -1805,12 +1811,13 @@ mod tests {
                 "stopped late: {}",
                 args.len()
             );
-            assert_eq!(
-                finishes(&run.out),
-                vec!["repetition"],
-                "{:?}",
-                run.out.last()
-            );
+            // Clients see a truncation; the opt-in detail names the cause.
+            assert_eq!(finishes(&run.out), vec!["length"], "{:?}", run.out.last());
+            let detail = run
+                .out
+                .iter()
+                .find_map(|v| v["nvext"]["detailed_finish_reason"].as_str());
+            assert_eq!(detail, Some("repetition"), "{:?}", run.out.last());
             assert!(
                 run.engine_stopped,
                 "the repetition stop must cancel the engine"
@@ -1842,10 +1849,7 @@ mod tests {
             .await
             .unwrap();
             let value = serde_json::to_value(response).unwrap();
-            assert_eq!(
-                value["choices"][0]["finish_reason"], "repetition",
-                "{value}"
-            );
+            assert_eq!(value["choices"][0]["finish_reason"], "length", "{value}");
             assert!(
                 value["choices"][0]["message"]["tool_calls"].is_null(),
                 "{value}"

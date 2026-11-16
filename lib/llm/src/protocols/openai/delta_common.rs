@@ -127,6 +127,18 @@ impl DeltaGeneratorState {
         self.tracker.clone()
     }
 
+    /// OpenAI has no `repetition` finish reason, and OpenAI gateways such as
+    /// LiteLLM rewrite unknown reasons to `stop`, which presents a cut-off turn
+    /// as complete. Clients therefore see a repetition stop as `length`, the
+    /// truncation they already handle. The backend reason stays in the request
+    /// trace; this log names the request for support.
+    pub(crate) fn report_repetition_as_length(&self) {
+        tracing::info!(
+            request_id = %self.id,
+            "frontend repetition stop is reported to the client as finish_reason length"
+        );
+    }
+
     pub(crate) fn tracker_ref(&self) -> &Arc<RequestTracker> {
         &self.tracker
     }

@@ -397,6 +397,10 @@ impl crate::protocols::openai::DeltaGeneratorExt<NvCreateCompletionResponse> for
                 self.state.tracker_ref().record_finish();
                 return Err(anyhow::anyhow!(err_msg.clone()));
             }
+            Some(common::FinishReason::Repetition) => {
+                self.state.report_repetition_as_length();
+                Some(dynamo_protocols::types::CompletionFinishReason::Length)
+            }
             Some(reason) => Some(reason.clone().into()),
             None => None,
         };
@@ -827,7 +831,8 @@ mod tests {
     }
 
     #[test]
-    fn test_repetition_passes_through_from_backend() {
+    /// OpenAI clients see the truncation; the opt-in detail keeps the cause.
+    fn test_repetition_is_reported_as_length_with_detail() {
         let request =
             create_test_request_with_extra_fields(vec!["detailed_finish_reason".to_string()]);
         let mut generator = request.response_generator("req-repetition-nvext".to_string());
@@ -839,7 +844,7 @@ mod tests {
             .expect("choice generation");
         let response_json = serde_json::to_value(response).expect("serialize response");
 
-        assert_eq!(response_json["choices"][0]["finish_reason"], "repetition");
+        assert_eq!(response_json["choices"][0]["finish_reason"], "length");
         assert_eq!(
             response_json["nvext"]["detailed_finish_reason"],
             "repetition"

@@ -6,8 +6,8 @@ SPDX-License-Identifier: Apache-2.0
 # Frontend repetition detection (Axiom downstream)
 
 Internal-only: not intended for upstream. The frontend stops a choice whose generated
-token IDs end in one N-gram repeated back to back, and reports finish reason
-`repetition`. It runs in the Rust `Decoder` (`lib/llm/src/backend/repetition.rs`), so it
+token IDs end in one N-gram repeated back to back, with the internal finish reason
+`repetition` (clients see `length`; see Behaviour). It runs in the Rust `Decoder` (`lib/llm/src/backend/repetition.rs`), so it
 works the same for vLLM, SGLang, and TensorRT-LLM workers, and its stop cancels the
 upstream engine request, which frees that request's decode slot and KV cache.
 
@@ -46,11 +46,17 @@ change or disable the rule per request.
   An explicit stop token or stop string on the same token keeps its own finish reason.
 - The stopping token's text is emitted; nothing after it is.
 - Per-token cost is linear in the largest `max_pattern_size`.
-- Finish reason `repetition` is treated as truncation, like `length`: collected
-  (non-streaming) responses drop incomplete tool calls and incomplete structured output.
-  Streaming clients have already received the deltas, exactly as with `length`, and must
-  treat a `repetition` finish as an interrupted turn. Anthropic Messages reports
-  `end_turn`.
+- A repetition stop is a truncation. OpenAI clients see `finish_reason: "length"`,
+  Responses `incomplete_details.reason: "max_output_tokens"`, and Anthropic Messages
+  `stop_reason: "max_tokens"`. OpenAI has no repetition value, and gateways such as
+  LiteLLM (verified with 1.106.6) rewrite unknown reasons to `stop`, which would present
+  a cut-off turn as complete. Collected (non-streaming) responses drop incomplete tool
+  calls and incomplete structured output; streaming clients have already received the
+  deltas and must treat the turn as interrupted.
+- The cause stays visible to the operator: the request trace keeps the backend reason
+  `repetition`, the frontend logs the request ID at INFO, and a client that asks with
+  `nvext.extra_fields: ["detailed_finish_reason"]` gets `nvext.detailed_finish_reason:
+  "repetition"`. An engine that reports `repetition` itself is handled the same way.
 - A migrated request restarts detection from the new attempt's generated tokens.
 
 ## Coverage
@@ -66,5 +72,5 @@ Not covered:
 
 Short patterns repeat legitimately in markdown table rules, code indentation, and JSON
 arrays of identical records. Start with long patterns and a moderate count, replay
-representative traffic, and inspect responses that end with `repetition` before
-lowering either bound.
+representative traffic, and inspect requests whose backend reason is `repetition` (request
+trace or the INFO log) before lowering either bound.
