@@ -17,7 +17,7 @@ pub mod media;
 #[cfg(feature = "mm-routing")]
 pub mod mm_routing;
 pub mod prompt;
-mod solar;
+pub(crate) mod solar;
 pub mod speculative_prefill;
 pub(crate) mod structural_tag;
 pub use structural_tag::structural_tag_parser_names;
@@ -6103,12 +6103,13 @@ impl OpenAIPreprocessor {
             ToolProcessingRoute::LegacyJail(effective_tool_call_parser)
                 if effective_tool_call_parser.as_deref() == Some("solar_open2") =>
             {
-                Box::pin(solar::apply_tool_policy(
+                solar::apply_tool_policy(
                     stream,
                     request.inner.tool_choice.clone(),
                     tool_definitions,
                     uses_tool_call_structural_tag,
-                ))
+                    guided_tool_streaming,
+                )
             }
             ToolProcessingRoute::LegacyJail(effective_tool_call_parser) => {
                 // A forced tool_choice installed a JSON grammar, so the jail may release

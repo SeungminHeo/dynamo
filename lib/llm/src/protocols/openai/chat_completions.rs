@@ -30,7 +30,6 @@ pub use aggregator::DeltaAggregator;
 pub use delta::DeltaGenerator;
 
 use dynamo_parsers::tool_calling::{ToolCallResponse, ToolCallResponseChunk};
-#[cfg(test)]
 use dynamo_protocols::types::{
     ChatChoiceStream, ChatCompletionMessageContent, ChatCompletionStreamResponseDelta, FinishReason,
 };
@@ -449,8 +448,8 @@ pub(crate) fn scrub_synthetic_chunk_metadata(
 }
 
 /// Synthetic terminal choices must not repeat accounting from the template's usage chunk.
-#[cfg(test)]
-pub(super) fn stream_choice_chunk_from_template(
+/// The Solar Open2 tool stream uses it when an engine omits a terminal choice.
+pub(crate) fn stream_choice_chunk_from_template(
     template: &NvCreateChatCompletionStreamResponse,
     index: u32,
     content: Option<ChatCompletionMessageContent>,
