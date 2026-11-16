@@ -911,6 +911,17 @@ impl DeltaAggregator {
             drop_malformed_terminal_tool_calls(choice, require_explicit_tool_terminal);
         }
 
+        // Solar Open2 streams calls before the backend finishes; a collected
+        // response exposes them only under the stream's committed terminal.
+        if parsing_options.tool_call_parser.as_deref() == Some("solar_open2") {
+            for choice in aggregator.choices.values_mut() {
+                crate::preprocessor::solar::enforce_collected_tool_calls(
+                    &mut choice.finish_reason,
+                    &mut choice.tool_calls,
+                );
+            }
+        }
+
         // A retained whole-response parser may discover a syntactically valid
         // call while removing model-internal channel markup. Parser activation
         // is not permission to expose that call; enforce the request policy

@@ -40,10 +40,27 @@ native guided-decoding gate.
 - Special tokens survive detokenization so the parser can see its delimiters.
 - Native tool arguments are schema-typed, with string fallback on failed conversion.
 - Engine `finish_reason: "repetition"` is accepted and preserved in chat/text
-  streaming and collected responses. This does not implement repetition detection.
-- Tool calls are withheld until a backend `stop`. Truncated, repetition-terminated, cancelled, errored,
-  or unterminated responses do not expose executable calls, even if an earlier
-  call was complete. Reasoning and pre-call prose still stream.
+  streaming and collected responses. Frontend detection is separate
+  (`DYN_REPETITION_DETECTION`, see `REPETITION_DETECTION.md`); it also stops a
+  loop inside a streaming tool argument.
+- Native (`auto`) tool calls stream as the model writes them, following the
+  reference streaming parser: the name when its line ends, typed values when
+  they are complete, and `}` at `<|tool_call:end|>`. String values also stream
+  while they are written (beyond the reference, which waits for
+  `<|tool_arg:end|>`), so a long argument such as a file body never holds the
+  stream. A string value that could still be the literal `null` waits until it
+  cannot. Concatenated arguments equal `solar::parse` output; a key repeated in
+  one call is streamed twice (the parser keeps the last value).
+- Executability is carried by the terminal reason. `tool_calls` is reported only
+  after a real backend `stop` with at least one closed call. Truncated
+  (`length`), repetition-terminated, cancelled, errored, or unterminated
+  responses keep their own reason; streamed deltas are not revoked, and
+  clients must not execute calls from such a turn. Collected (non-streaming)
+  responses drop every call in that case. A call the grammar rejects after its
+  name was sent is never closed, so its arguments never form valid JSON, and
+  collected responses drop it. Prose after the first call is dropped.
+- Guided `required`/named JSON stays on the shared jail and follows
+  `DYN_ENABLE_GUIDED_TOOL_STREAMING`, with the same terminal rule.
 - Guided required/named calls retain reasoning even when the entire completion
   arrives in one chunk; bare guided JSON is also accepted.
 - `reasoning_tokens` uses Dynamo's existing chunk-granular estimate. Low/none
