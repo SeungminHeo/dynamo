@@ -32,10 +32,11 @@ native guided-decoding gate.
     non-streaming path returns it as content.
 - Special tokens survive detokenization so the parser can see its delimiters.
 - Native tool arguments are schema-typed, with string fallback on failed conversion.
-- Engine `finish_reason: "repetition"` is accepted and preserved in chat/text
-  streaming and collected responses. Frontend detection is separate
-  (`DYN_REPETITION_DETECTION`, see `REPETITION_DETECTION.md`); it also stops a
-  loop inside a streaming tool argument.
+- Engine `finish_reason: "repetition"` is accepted and reported to clients as a
+  truncation (`length`, Responses `max_output_tokens`, Anthropic `max_tokens`);
+  `nvext.detailed_finish_reason` keeps `repetition` on request. Frontend detection
+  is separate (`DYN_REPETITION_DETECTION`, see `REPETITION_DETECTION.md`); it also
+  stops a loop inside a streaming tool argument.
 - Native (`auto`) tool calls stream as the model writes them, following the
   reference streaming parser: the name when its line ends, typed values when
   they are complete, and `}` at `<|tool_call:end|>`. String values also stream

@@ -773,8 +773,9 @@ pub(super) fn anthropic_stop_fields(
             (AnthropicStopReason::ToolUse, None)
         }
         FinishReason::ContentFilter => (AnthropicStopReason::Refusal, None),
-        // Messages has no repetition stop reason; the engine ended the turn.
-        FinishReason::Repetition => (AnthropicStopReason::EndTurn, None),
+        // Messages has no repetition stop reason. The turn was cut off, so it
+        // must not read as `end_turn`; report the truncation clients handle.
+        FinishReason::Repetition => (AnthropicStopReason::MaxTokens, None),
     }
 }
 
@@ -922,6 +923,14 @@ pub fn chat_completion_to_anthropic_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_repetition_is_a_truncation() {
+        let (reason, sequence) =
+            anthropic_stop_fields(&dynamo_protocols::types::FinishReason::Repetition, None);
+        assert_eq!(reason, AnthropicStopReason::MaxTokens);
+        assert_eq!(sequence, None);
+    }
 
     #[test]
     fn test_unary_stop_sequence_metadata() {
