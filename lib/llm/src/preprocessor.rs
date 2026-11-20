@@ -7707,10 +7707,12 @@ impl OpenAIPreprocessor {
         match reasoning_parser {
             Some("solar_open2") => {
                 // Solar's template defaults to high and ignores enable_thinking.
-                // Only medium/high leave the think block open in the supplied template.
+                // The public Solar template opens reasoning for medium/high/xhigh.
                 chat_template_args
                     .and_then(|args| args.get("reasoning_effort"))
-                    .is_some_and(|effort| !matches!(effort.as_str(), Some("medium" | "high")))
+                    .is_some_and(|effort| {
+                        !matches!(effort.as_str(), Some("medium" | "high" | "xhigh"))
+                    })
             }
             Some("kimi_k25" | "kimi_k3" | "kimi-k3") => {
                 dynamo_renderer::thinking_bool_from_args(chat_template_args) == Some(false)
@@ -19361,6 +19363,42 @@ responses_tools: None,
             .await
             .unwrap();
         assert_eq!(prefill.reasoning_closed_by_prompt, None);
+    }
+
+    #[test]
+    fn test_solar_template_reasoning_efforts() {
+        for (effort, enabled) in [
+            ("none", false),
+            ("low", false),
+            ("medium", true),
+            ("high", true),
+            ("xhigh", true),
+        ] {
+            let args = std::collections::HashMap::from([
+                ("reasoning_effort".to_string(), serde_json::json!(effort)),
+                ("enable_thinking".to_string(), serde_json::json!(false)),
+            ]);
+            assert_eq!(
+                OpenAIPreprocessor::is_reasoning_disabled_by_request(
+                    Some("solar_open2"),
+                    Some(&args)
+                ),
+                !enabled,
+                "{effort}"
+            );
+            assert_eq!(
+                OpenAIPreprocessor::sglang_effective_reasoning_enabled(
+                    Some("solar_open2"),
+                    Some(&args)
+                ),
+                enabled,
+                "{effort} grammar"
+            );
+        }
+        assert!(!OpenAIPreprocessor::is_reasoning_disabled_by_request(
+            Some("solar_open2"),
+            None
+        ));
     }
 
     /// PRE.2 — Per-request reasoning gate. See `lib/llm/PREPROCESSOR_CASES.md`.

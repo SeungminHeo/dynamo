@@ -142,11 +142,15 @@ impl TestService {
     /// Registers the same model twice, differing only in chat template: one that renders
     /// any history, and one that refuses a history without a user turn.
     async fn start() -> Self {
+        Self::start_with_template(REQUIRES_USER_TEMPLATE).await
+    }
+
+    async fn start_with_template(source: &str) -> Self {
         let mut template = tempfile::Builder::new()
             .suffix(".jinja")
             .tempfile()
             .expect("failed to create custom template file");
-        std::io::Write::write_all(&mut template, REQUIRES_USER_TEMPLATE.as_bytes())
+        std::io::Write::write_all(&mut template, source.as_bytes())
             .expect("failed to write custom template file");
 
         let (listener, port) = bind_random_port().await;
@@ -339,5 +343,87 @@ async fn guided_decoding_conflict_returns_400_json_not_sse() {
         );
     }
 
+    service.shutdown().await;
+}
+
+#[tokio::test]
+async fn solar_missing_tool_ids_return_400_before_streaming() {
+    let service = TestService::start_with_template(include_str!(
+        "../../../deploy/templates/solar_open2.jinja"
+    ))
+    .await;
+    for stream in [false, true] {
+        for missing in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!("")),
+        ] {
+            for assistant_id in [true, false] {
+                let mut call = serde_json::json!({
+                    "id":"call_a", "type":"function",
+                    "function":{"name":"lookup","arguments":"{}"}
+                });
+                let mut result =
+                    serde_json::json!({"role":"tool","tool_call_id":"call_a","content":"42"});
+                let (object, key) = if assistant_id {
+                    (&mut call, "id")
+                } else {
+                    (&mut result, "tool_call_id")
+                };
+                match &missing {
+                    Some(value) => {
+                        object[key] = value.clone();
+                    }
+                    None => {
+                        object.as_object_mut().unwrap().remove(key);
+                    }
+                }
+                let response = service
+                    .client
+                    .post(format!(
+                        "http://127.0.0.1:{}/v1/chat/completions",
+                        service.port
+                    ))
+                    .json(&serde_json::json!({
+                        "model":REJECTING_MODEL,"stream":stream,"max_tokens":1,
+                        "messages":[{"role":"user","content":"lookup"},
+                            {"role":"assistant","content":"","tool_calls":[call]},result]
+                    }))
+                    .send()
+                    .await
+                    .unwrap();
+                let status = response.status();
+                let content_type = response
+                    .headers()
+                    .get(reqwest::header::CONTENT_TYPE)
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned();
+                let body = response.text().await.unwrap();
+                assert_eq!(
+                    status,
+                    StatusCode::BAD_REQUEST,
+                    "stream={stream} assistant_id={assistant_id} missing={missing:?}: {body}"
+                );
+                assert!(
+                    content_type.starts_with("application/json"),
+                    "{content_type}"
+                );
+            }
+        }
+        let response = service.client.post(format!("http://127.0.0.1:{}/v1/chat/completions", service.port))
+            .json(&serde_json::json!({
+                "model":REJECTING_MODEL,"stream":stream,"max_tokens":1,
+                "reasoning_effort":"xhigh",
+                "messages":[{"role":"user","content":"lookup"},
+                    {"role":"assistant","content":"","reasoning_content":"prior thought","tool_calls":[
+                        {"id":"call_a","type":"function","function":{"name":"lookup","arguments":"{}"}}
+                    ]},{"role":"tool","tool_call_id":"call_a","content":"42"}]
+            })).send().await.unwrap();
+        let status = response.status();
+        let body = response.text().await.unwrap();
+        assert_eq!(status, StatusCode::OK, "stream={stream}: {body}");
+    }
     service.shutdown().await;
 }
